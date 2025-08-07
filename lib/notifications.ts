@@ -230,7 +230,7 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ error }) => {
 });
 
 /* ───────────── Initialiser / cleanup ───── */
-export const initNotifications = async (): Promise<() => void> => {
+export const initializeNotifications = async (): Promise<() => void> => {
   if (!(await notificationsEnabledForUser())) return () => {};
 
   await requestPermissions();

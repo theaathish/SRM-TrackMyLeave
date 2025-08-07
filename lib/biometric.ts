@@ -15,6 +15,15 @@ export interface BiometricResult {
 
 export const checkBiometricCapability = async (): Promise<BiometricCapability> => {
   try {
+    if (Platform.OS === 'web') {
+      return {
+        isAvailable: false,
+        supportedTypes: [],
+        isEnrolled: false,
+        error: 'Web platform does not support biometrics',
+      };
+    }
+
     const hasHardware = await LocalAuthentication.hasHardwareAsync();
     if (!hasHardware) {
       return {
@@ -26,20 +35,13 @@ export const checkBiometricCapability = async (): Promise<BiometricCapability> =
     }
 
     const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-    if (!isEnrolled) {
-      return {
-        isAvailable: false,
-        supportedTypes: [],
-        isEnrolled: false,
-        error: 'No biometrics enrolled',
-      };
-    }
-
     const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+    
     return {
-      isAvailable: true,
+      isAvailable: hasHardware && isEnrolled,
       supportedTypes,
-      isEnrolled: true,
+      isEnrolled,
+      error: !isEnrolled ? 'No biometrics enrolled' : undefined,
     };
   } catch (error) {
     return {
@@ -52,9 +54,17 @@ export const checkBiometricCapability = async (): Promise<BiometricCapability> =
 };
 
 export const authenticateWithBiometrics = async (
-  promptMessage: string = 'Use biometric authentication'
+  promptMessage: string = 'Use biometric authentication',
+  allowCancel: boolean = true
 ): Promise<BiometricResult> => {
   try {
+    if (Platform.OS === 'web') {
+      return {
+        success: false,
+        error: 'Biometric authentication not supported on web',
+      };
+    }
+
     const capability = await checkBiometricCapability();
     if (!capability.isAvailable) {
       return {
@@ -63,33 +73,59 @@ export const authenticateWithBiometrics = async (
       };
     }
 
+    // Add a small delay to ensure the app is in the foreground
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     const result = await LocalAuthentication.authenticateAsync({
       promptMessage,
-      cancelLabel: 'Cancel',
-      fallbackLabel: 'Use PIN Instead',
-      disableDeviceFallback: true,
+      cancelLabel: allowCancel ? 'Cancel' : undefined,
+      fallbackLabel: 'Use Passcode',
+      disableDeviceFallback: false, // Allow fallback to device passcode
+      requireConfirmation: false, // Don't require additional confirmation
     });
 
     if (result.success) {
       return { success: true };
     } else {
       let errorMessage = 'Biometric authentication failed';
-      if (result.error === 'user_cancel') {
-        errorMessage = 'Authentication cancelled by user';
-      } else if (result.error === 'user_fallback') {
-        errorMessage = 'User chose to use PIN';
-      } else if (result.error === 'biometric_not_available') {
-        errorMessage = 'Biometric authentication not available';
-      } else if (result.error === 'too_many_attempts') {
-        errorMessage = 'Too many failed attempts';
+      
+      switch (result.error) {
+        case 'user_cancel':
+          errorMessage = allowCancel ? 'Authentication cancelled by user' : 'Please authenticate to continue';
+          break;
+        case 'user_fallback':
+          // Fallback was used successfully, treat as success
+          return { success: true };
+        case 'biometric_not_available':
+          errorMessage = 'Biometric authentication not available';
+          break;
+        case 'too_many_attempts':
+          errorMessage = 'Too many failed attempts. Please try again later';
+          break;
+        case 'system_cancel':
+        case 'app_cancel':
+          // These usually happen due to app state changes, retry once
+          console.log('Authentication cancelled by system/app, retrying...');
+          await new Promise(resolve => setTimeout(resolve, 500));
+          return authenticateWithBiometrics(promptMessage, allowCancel);
+        case 'not_enrolled':
+          errorMessage = 'No biometrics enrolled on this device';
+          break;
+        case 'not_available':
+          errorMessage = 'Biometric authentication not available';
+          break;
+        default:
+          console.log('Unhandled authentication error:', result.error);
+          errorMessage = `Authentication failed: ${result.error}`;
       }
       
       return { success: false, error: errorMessage };
     }
   } catch (error) {
+    console.error('Biometric authentication error:', error);
     return {
       success: false,
-      error: 'An error occurred during biometric authentication',
+      error: 'An unexpected error occurred during authentication',
     };
   }
 };
@@ -113,12 +149,16 @@ export const getBiometricTypeNames = (
 
 export const getBiometricDescription = async (): Promise<string> => {
   try {
+    if (Platform.OS === 'web') {
+      return 'Not supported on web';
+    }
+
     const capability = await checkBiometricCapability();
     if (!capability.isAvailable) {
       if (capability.error === 'Biometric hardware not available') {
         return 'Not supported on this device';
       } else if (capability.error === 'No biometrics enrolled') {
-        return 'Available but not set up';
+        return 'Available but not set up. Please set up biometrics in device settings';
       } else {
         return 'Not available';
       }
@@ -134,5 +174,35 @@ export const getBiometricDescription = async (): Promise<string> => {
     }
   } catch (error) {
     return 'Unable to check status';
+  }
+};
+
+// Helper function to check if biometric setup is recommended
+export const shouldPromptBiometricSetup = async (): Promise<{ shouldPrompt: boolean; message?: string }> => {
+  try {
+    if (Platform.OS === 'web') {
+      return { shouldPrompt: false };
+    }
+
+    const hasHardware = await LocalAuthentication.hasHardwareAsync();
+    if (!hasHardware) {
+      return { shouldPrompt: false };
+    }
+
+    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+    if (!isEnrolled) {
+      const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+      const typeNames = getBiometricTypeNames(supportedTypes);
+      const typesText = typeNames.length > 0 ? typeNames.join(' or ') : 'biometric authentication';
+      
+      return {
+        shouldPrompt: true,
+        message: `For enhanced security, please set up ${typesText} in your device settings.`
+      };
+    }
+
+    return { shouldPrompt: false };
+  } catch (error) {
+    return { shouldPrompt: false };
   }
 };
