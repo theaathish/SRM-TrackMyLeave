@@ -116,7 +116,13 @@ export default function SubmitLeaveScreen() {
       if (!formData.fromDate) return '';
       
       if (formData.toDate) {
-        // Use working days calculation for date ranges
+        // Special handling for compensation leave - no working days calculation needed
+        if (formData.leaveType === 'Compensation') {
+          const daysDiff = Math.floor((formData.toDate.getTime() - formData.fromDate.getTime()) / (1000 * 3600 * 24)) + 1;
+          return daysDiff === 1 ? '1 day (compensation)' : `${daysDiff} days (compensation)`;
+        }
+        
+        // Use working days calculation for Leave and On Duty
         try {
           const workingDays = await getWorkingDaysBetween(formData.fromDate, formData.toDate);
           const totalDays = Math.floor((formData.toDate.getTime() - formData.fromDate.getTime()) / (1000 * 3600 * 24)) + 1;
@@ -135,7 +141,7 @@ export default function SubmitLeaveScreen() {
           return daysDiff === 1 ? '1 day' : `${daysDiff} days`;
         }
       } else {
-        return '1 day';
+        return formData.leaveType === 'Compensation' ? '1 day (compensation)' : '1 day';
       }
     } else if (formData.leaveType === 'Permission') {
       if (!formData.fromDate) return '';
@@ -425,8 +431,6 @@ export default function SubmitLeaveScreen() {
                 <Text style={styles.cardTitle}>Request Details</Text>
               </CardHeader>
               <CardContent style={styles.form}>
-                
-
                 <Input
                   label="Employee ID"
                   value={formData.empId}
@@ -472,6 +476,9 @@ export default function SubmitLeaveScreen() {
                   />
                 )}
 
+                {/* Compensation Leave Information Banner */}
+                {formData.leaveType === 'Compensation'}
+
                 <DatePicker
                   label="From Date"
                   value={formData.fromDate}
@@ -485,9 +492,10 @@ export default function SubmitLeaveScreen() {
                     });
                   }}
                   containerStyle={styles.input}
-                  allowWeekends={false}
-                  allowHolidays={false} // Block holidays completely
-                  showHolidayWarning={false} // No warning needed since blocked
+                  allowWeekends={formData.leaveType !== 'Compensation'} // Block weekends for non-compensation leave
+                  allowHolidays={formData.leaveType !== 'Compensation'} // Block holidays for non-compensation leave
+                  showHolidayWarning={formData.leaveType !== 'Compensation'} // No warning needed for compensation
+                  isCompensationLeave={formData.leaveType === 'Compensation'} // New prop
                   minimumDate={new Date()}
                 />
 
@@ -506,9 +514,10 @@ export default function SubmitLeaveScreen() {
                       });
                     }}
                     containerStyle={styles.input}
-                    allowWeekends={false}
-                    allowHolidays={false} // Block holidays completely
-                    showHolidayWarning={false} // No warning needed since blocked
+                    allowWeekends={formData.leaveType !== 'Compensation'} // Block weekends for non-compensation leave
+                    allowHolidays={formData.leaveType !== 'Compensation'} // Block holidays for non-compensation leave
+                    showHolidayWarning={formData.leaveType !== 'Compensation'} // No warning needed for compensation
+                    isCompensationLeave={formData.leaveType === 'Compensation'} // New prop
                     minimumDate={formData.fromDate || new Date()}
                   />
                 )}
@@ -588,7 +597,6 @@ export default function SubmitLeaveScreen() {
                           })() : 'Auto-calculated'}
                         </Text>
                       </View>
-
                     </View>
 
                     {/* Permission Duration Display */}
@@ -619,6 +627,11 @@ export default function SubmitLeaveScreen() {
                     {formData.calculatedDuration.includes('working days') && (
                       <Text style={styles.durationNote}>
                         ℹ️ Weekends and holidays are excluded from working days count
+                      </Text>
+                    )}
+                    {formData.leaveType === 'Compensation' && (
+                      <Text style={styles.compensationNote}>
+                        💡 Compensation leave for work done on non-working days
                       </Text>
                     )}
                   </View>
