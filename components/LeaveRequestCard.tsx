@@ -263,21 +263,21 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
           <CardFooter style={styles.footer}>
             <View style={styles.buttonRow}>
               <Button
-                title="✅ Approve"
+                title="Approve"
                 onPress={handleApprove}
                 variant="success"
                 size="sm"
-                icon={<Check size={16} color="white" />}
+                icon={<Check size={18} color="white" />}
                 loading={loading && optimisticStatus === 'Approved'}
                 disabled={loading}
                 style={[styles.actionButton, styles.approveButton]}
               />
               <Button
-                title="❌ Deny"
+                title="Deny"
                 onPress={handleDeny}
                 variant="danger"
                 size="sm"
-                icon={<X size={16} color="white" />}
+                icon={<X size={18} color="white" />}
                 loading={loading && optimisticStatus === 'Rejected'}
                 disabled={loading}
                 style={[styles.actionButton, styles.denyButton]}
@@ -424,13 +424,24 @@ const styles = StyleSheet.create({
   },
   footer: {
     backgroundColor: '#FAFAFA',
+    paddingTop: 16,
+    paddingBottom: 20,
   },
   buttonRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 14,
+    paddingHorizontal: 4,
   },
   actionButton: {
     flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    minHeight: 52,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    position: 'relative',
+    overflow: 'hidden',
   },
   optimisticCard: {
     opacity: 0.8,
@@ -450,17 +461,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   approveButton: {
-    backgroundColor: '#10B981',
-    shadowColor: '#10B981',
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: '#059669',
+    shadowColor: '#059669',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+    // Gradient effect using border
+    borderWidth: 1,
+    borderColor: '#047857',
+    // Add subtle inner highlight
+    position: 'relative',
   },
   denyButton: {
-    backgroundColor: '#EF4444',
-    shadowColor: '#EF4444',
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: '#DC2626',
+    shadowColor: '#DC2626',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+    // Gradient effect using border
+    borderWidth: 1,
+    borderColor: '#B91C1C',
+    // Add subtle inner highlight
+    position: 'relative',
   },
 });
