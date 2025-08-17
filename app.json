@@ -2,7 +2,7 @@
   "expo": {
     "name": "TrackMyLeave",
     "slug": "trackmyleave",
-    "version": "1.0.0",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -35,7 +35,7 @@
       "infoPlist": {
         "NSFaceIDUsageDescription": "Use Face ID to unlock the app securely."
       },
-      "bundleIdentifier": "com.aathish.trackmyleave"
+      "bundleIdentifier": "com.srmrearch.leavemanager"
     },
     "android": {
       "adaptiveIcon": {
@@ -48,13 +48,26 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE"
       ],
-      "package": "com.aathish.trackmyleave"
+      "package": "com.srmrearch.leavemanager"
     },
     "notification": {
       "icon": "./assets/notification-icon.png",
       "color": "#3B82F6",
       "androidMode": "default",
       "androidCollapsedTitle": "#{unread_notifications} new notifications"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "af4bec31-9cb2-4ead-a81e-3e706ed14794"
+      },
+      "firebase": {
+        "apiKey": "AIzaSyCHKewsoykpqi6CtfJk4PTaI5ZGZneJuUM",
+        "authDomain": "leavemanagersrm.firebaseapp.com",
+        "projectId": "leavemanagersrm",
+        "storageBucket": "leavemanagersrm.firebasestorage.app",
+        "messagingSenderId": "7588322507",
+        "appId": "1:7588322507:web:ca2157cd7f87f18cf44f4e"
+      }
     }
   }
 }

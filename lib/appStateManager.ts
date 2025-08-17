@@ -7,18 +7,21 @@ import { getCurrentUser } from './auth';
 type LockListener = (isLocked: boolean) => void;
 
 class AppStateManager {
-  private isLocked = true; // Always start locked
+  private isLocked = false; // Start unlocked by default
   private lockTimeout: NodeJS.Timeout | null = null;
   private lastActiveTime = Date.now();
   private listeners: LockListener[] = [];
   private appStateSubscription: any = null;
-  private readonly DEFAULT_LOCK_TIMEOUT = 0; // Immediate lock
+  private readonly DEFAULT_LOCK_TIMEOUT = 0;
   private currentLockTimeout = this.DEFAULT_LOCK_TIMEOUT;
   private readonly STORAGE_KEY = 'app_was_locked';
   private readonly FIRST_INSTALL_KEY = 'first_install_completed';
-  private appLockEnabled = true; // Always enabled
+  private readonly FIRST_LAUNCH_KEY = 'first_launch_completed';
+  private appLockEnabled = false; // Disabled by default
   private isFirstInstall = false;
+  private isFirstLaunch = true;
   private authenticationPromise: Promise<{ success: boolean; message?: string }> | null = null;
+  private isAuthenticated = false; // Track authentication state
 
   constructor() {
     this.initialize();
@@ -28,21 +31,52 @@ class AppStateManager {
     try {
       console.log('Initializing AppStateManager...');
       
-      // Check if this is first install
       await this.checkFirstInstall();
+      await this.checkFirstLaunch();
       
-      // Load user preferences
       await this.loadUserPreferences();
       
-      if (Platform.OS !== 'web' && this.appLockEnabled) {
+      // Only add app state listeners if authenticated
+      if (this.isAuthenticated && Platform.OS !== 'web' && this.appLockEnabled) {
         this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
       }
 
-      // Always initialize as locked - user must authenticate on every app open
       await this.initializeLockState();
       console.log('AppStateManager initialized successfully');
     } catch (error) {
       console.error('Error initializing AppStateManager:', error);
+    }
+  }
+
+  public setAuthState(authenticated: boolean) {
+    this.isAuthenticated = authenticated;
+    
+    if (authenticated) {
+      // Enable app lock after login
+      this.appLockEnabled = true;
+      this.currentLockTimeout = 0;
+      
+      // Add app state listeners only after login
+      if (Platform.OS !== 'web') {
+        this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
+      }
+      
+      // Lock immediately after login if not first launch
+      if (!this.isFirstLaunch) {
+        this.lockApp();
+      }
+    } else {
+      // Disable app lock on logout
+      this.appLockEnabled = false;
+      
+      // Remove app state listeners
+      if (this.appStateSubscription) {
+        this.appStateSubscription.remove();
+        this.appStateSubscription = null;
+      }
+      
+      // Unlock on logout
+      this.unlockApp();
     }
   }
 
@@ -59,7 +93,38 @@ class AppStateManager {
       console.log('First install check:', { isFirstInstall: this.isFirstInstall });
     } catch (error) {
       console.warn('Could not check first install status:', error);
-      this.isFirstInstall = true; // Assume first install on error
+      this.isFirstInstall = true;
+    }
+  }
+
+  private async checkFirstLaunch() {
+    try {
+      let firstLaunchCompleted = 'false';
+      if (Platform.OS === 'web') {
+        firstLaunchCompleted = localStorage.getItem(this.FIRST_LAUNCH_KEY) || 'false';
+      } else {
+        firstLaunchCompleted = await SecureStore.getItemAsync(this.FIRST_LAUNCH_KEY) || 'false';
+      }
+
+      this.isFirstLaunch = firstLaunchCompleted !== 'true';
+      console.log('First launch check:', { isFirstLaunch: this.isFirstLaunch });
+    } catch (error) {
+      console.warn('Could not check first launch status:', error);
+      this.isFirstLaunch = true;
+    }
+  }
+
+  private async markFirstLaunchComplete() {
+    try {
+      if (Platform.OS === 'web') {
+        localStorage.setItem(this.FIRST_LAUNCH_KEY, 'true');
+      } else {
+        await SecureStore.setItemAsync(this.FIRST_LAUNCH_KEY, 'true');
+      }
+      this.isFirstLaunch = false;
+      console.log('First launch marked as complete');
+    } catch (error) {
+      console.warn('Could not mark first launch as complete:', error);
     }
   }
 
@@ -81,42 +146,51 @@ class AppStateManager {
     try {
       const user = await getCurrentUser();
       if (user) {
-        // Force app lock to be enabled regardless of user preference for security
-        this.appLockEnabled = true;
-        this.currentLockTimeout = 0; // Always immediate lock
-        console.log('App lock preferences loaded (forced enabled):', {
+        this.isAuthenticated = true;
+        this.appLockEnabled = user.appLockEnabled ?? true;
+        this.currentLockTimeout = user.lockTimeout ?? 0;
+        console.log('App lock preferences loaded:', {
           enabled: this.appLockEnabled,
           timeout: this.currentLockTimeout
         });
       }
     } catch (error) {
       console.warn('Could not load user preferences:', error);
-      // Use secure defaults
-      this.appLockEnabled = true;
+      this.appLockEnabled = false;
       this.currentLockTimeout = 0;
     }
   }
 
   private async initializeLockState() {
-    // Always start locked - user must authenticate on every app open
-    this.isLocked = true;
+    // Only lock if authenticated and not first launch
+    this.isLocked = this.isAuthenticated && !this.isFirstLaunch;
     
     try {
-      // Set locked state in storage
       if (Platform.OS === 'web') {
-        localStorage.setItem(this.STORAGE_KEY, 'true');
+        localStorage.setItem(this.STORAGE_KEY, this.isLocked.toString());
       } else {
-        await SecureStore.setItemAsync(this.STORAGE_KEY, 'true');
+        await SecureStore.setItemAsync(this.STORAGE_KEY, this.isLocked.toString());
       }
     } catch (error) {
       console.warn('Could not save initial lock state to storage:', error);
     }
 
-    // Notify listeners that app is locked
+    if (this.isFirstLaunch) {
+      await this.markFirstLaunchComplete();
+    }
+
     this.notifyListeners();
+    
+    console.log('App initialized:', { 
+      isFirstInstall: this.isFirstInstall, 
+      isFirstLaunch: this.isFirstLaunch,
+      isLocked: this.isLocked 
+    });
   }
 
   private handleAppStateChange = (nextAppState: AppStateStatus) => {
+    if (!this.isAuthenticated) return;
+    
     console.log('App state changed:', AppState.currentState, '->', nextAppState);
     if (nextAppState === 'background') {
       this.handleAppBackground();
@@ -126,14 +200,17 @@ class AppStateManager {
   };
 
   private handleAppBackground() {
+    if (!this.isAuthenticated) return;
+    
     if (Platform.OS === 'web') return;
     
     this.lastActiveTime = Date.now();
-    // Lock immediately when going to background
     this.lockApp();
   }
 
   private handleAppForeground() {
+    if (!this.isAuthenticated) return;
+    
     if (Platform.OS === 'web') return;
 
     if (this.lockTimeout) {
@@ -141,8 +218,6 @@ class AppStateManager {
       this.lockTimeout = null;
     }
 
-    // Always lock when coming back to foreground, but add a small delay
-    // to avoid interference with the authentication process
     setTimeout(() => {
       if (!this.isLocked) {
         this.lockApp();
@@ -150,20 +225,17 @@ class AppStateManager {
     }, 100);
   }
 
-  // Public method to update user preferences (but maintain security)
   public async updatePreferences(appLockEnabled: boolean, lockTimeout?: number) {
-    // Force app lock to always be enabled for security
-    this.appLockEnabled = true;
-    this.currentLockTimeout = 0; // Always immediate lock
-
-    console.log('App lock preferences updated (security enforced):', {
+    this.appLockEnabled = appLockEnabled;
+    this.currentLockTimeout = lockTimeout ?? this.DEFAULT_LOCK_TIMEOUT;
+    console.log('App lock preferences updated:', {
       enabled: this.appLockEnabled,
       timeout: this.currentLockTimeout
     });
   }
 
   private async lockApp() {
-    if (this.isLocked) return;
+    if (!this.isAuthenticated || this.isLocked) return;
 
     console.log('Locking app...');
     this.isLocked = true;
@@ -185,7 +257,6 @@ class AppStateManager {
     console.log('Unlocking app...');
     this.isLocked = false;
     
-    // Mark first install as complete when user successfully authenticates
     if (this.isFirstInstall) {
       await this.markFirstInstallComplete();
     }
@@ -202,8 +273,6 @@ class AppStateManager {
 
     this.notifyListeners();
   }
-
-  private authenticationPromise: Promise<{ success: boolean; message?: string }> | null = null;
 
   public async authenticate(): Promise<{ success: boolean; message?: string }> {
     // If authentication is already in progress, return the existing promise
@@ -227,6 +296,11 @@ class AppStateManager {
   private async performAuthentication(): Promise<{ success: boolean; message?: string }> {
     try {
       console.log('Starting authentication...');
+      
+      // Check authentication state first
+      if (!this.isAuthenticated) {
+        return { success: false, message: 'User not authenticated' };
+      }
       
       if (Platform.OS === 'web') {
         // For web, just unlock (no biometric support)
@@ -271,7 +345,7 @@ class AppStateManager {
 
       // Attempt biometric authentication with retries
       const promptMessage = this.isFirstInstall 
-        ? 'Welcome! Please authenticate to secure your app'
+        ? 'Please authenticate to secure your app'
         : 'Unlock TrackMyLeave';
 
       let lastError = '';
@@ -313,6 +387,16 @@ class AppStateManager {
     }
   }
 
+  // Call this method when user completes initial app setup
+  public async enableLockingAfterSetup() {
+    if (this.isFirstInstall) {
+      console.log('Enabling app locking after first setup...');
+      await this.markFirstInstallComplete();
+      
+      console.log('App locking enabled. Normal security behavior will apply.');
+    }
+  }
+
   public addListener(listener: LockListener) {
     this.listeners.push(listener);
   }
@@ -335,7 +419,7 @@ class AppStateManager {
   }
 
   public getIsLocked(): boolean {
-    // Always return true for web (no locking support), otherwise return actual state
+    // Always return false for web (no locking support), otherwise return actual state
     return Platform.OS === 'web' ? false : this.isLocked;
   }
 
@@ -349,11 +433,15 @@ class AppStateManager {
   }
 
   public getAppLockEnabled(): boolean {
-    return Platform.OS !== 'web'; // Always enabled on mobile
+    return this.appLockEnabled && this.isAuthenticated;
   }
 
   public isFirstInstallCheck(): boolean {
     return this.isFirstInstall;
+  }
+
+  public isFirstLaunchCheck(): boolean {
+    return this.isFirstLaunch;
   }
 
   public cleanup() {
@@ -368,7 +456,7 @@ class AppStateManager {
     }
 
     this.listeners = [];
-    this.authenticationPromise = null; // Clear authentication promise
+    this.authenticationPromise = null;
   }
 }
 

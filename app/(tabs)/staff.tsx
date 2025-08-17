@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Animated } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Animated, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -7,7 +7,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { getLeaveRequests, LeaveRequest } from '@/lib/firestore';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Users, Calendar, Clock, ChevronRight, TrendingUp, UserCheck } from 'lucide-react-native';
+import { Users, Calendar, Clock, ChevronRight, TrendingUp, UserCheck, Search, Filter, X } from 'lucide-react-native';
 
 interface StaffStats {
   userId: string;
@@ -29,16 +29,23 @@ export default function StaffScreen() {
   const router = useRouter();
   const scrollViewRef = useRef<ScrollView>(null);
   const staffListAnchorRef = useRef<View>(null);
+  const searchSectionRef = useRef<View>(null);
   
   const [user, setUser] = useState<any>(null);
   const [staffStats, setStaffStats] = useState<StaffStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Search and filter states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState('');
+  const [showDepartmentFilter, setShowDepartmentFilter] = useState(false);
 
   // Animation values
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(30));
   const [statsScaleAnim] = useState(new Animated.Value(0.8));
+  const [filterSlideAnim] = useState(new Animated.Value(-100));
 
   useEffect(() => {
     loadData();
@@ -63,6 +70,15 @@ export default function StaffScreen() {
       }),
     ]).start();
   }, []);
+
+  // Animate department filter
+  useEffect(() => {
+    Animated.timing(filterSlideAnim, {
+      toValue: showDepartmentFilter ? 0 : -100,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [showDepartmentFilter]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -135,7 +151,32 @@ export default function StaffScreen() {
     setRefreshing(false);
   }, [loadData]);
 
-  // Calculate overview stats
+  // Get unique departments
+  const departments = useMemo(() => {
+    const depts = [...new Set(staffStats.map(staff => staff.department))].filter(Boolean);
+    return depts.sort();
+  }, [staffStats]);
+
+  // Filter staff based on search query and department
+  const filteredStaff = useMemo(() => {
+    let filtered = staffStats;
+
+    // Filter by search query (name)
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(staff =>
+        staff.userName.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Filter by department
+    if (selectedDepartment) {
+      filtered = filtered.filter(staff => staff.department === selectedDepartment);
+    }
+
+    return filtered;
+  }, [staffStats, searchQuery, selectedDepartment]);
+
+  // Calculate overview stats based on ALL data (not filtered)
   const overviewStats = useMemo(() => {
     const totalStaff = staffStats.length;
     const totalPendingRequests = staffStats.reduce((sum, staff) => sum + staff.pendingRequests, 0);
@@ -150,20 +191,51 @@ export default function StaffScreen() {
     };
   }, [staffStats]);
 
-  const scrollToSection = (ref: React.RefObject<View>) => {
-    if (ref.current && scrollViewRef.current) {
-      ref.current.measureLayout(
-        scrollViewRef.current as any,
-        (x, y) => {
-          scrollViewRef.current?.scrollTo({ y: y - 20, animated: true });
-        }
-      );
+  // Auto-scroll to results when searching
+  const scrollToResults = useCallback(() => {
+    if (staffListAnchorRef.current && scrollViewRef.current) {
+      setTimeout(() => {
+        staffListAnchorRef.current?.measureLayout(
+          scrollViewRef.current as any,
+          (x, y) => {
+            scrollViewRef.current?.scrollTo({ 
+              y: y - 10, // Small offset from the top
+              animated: true 
+            });
+          },
+          () => {} // Error callback
+        );
+      }, 100); // Small delay to ensure layout is complete
     }
-  };
+  }, []);
+
+  // Auto-scroll when search query or department filter changes
+  useEffect(() => {
+    if (searchQuery.trim() || selectedDepartment) {
+      scrollToResults();
+    }
+  }, [searchQuery, selectedDepartment, scrollToResults]);
 
   // Navigate to home page with animation
   const navigateToHome = () => {
     router.push('/(tabs)/');
+  };
+
+  // Clear all filters
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedDepartment('');
+  };
+
+  // Toggle department filter visibility
+  const toggleDepartmentFilter = () => {
+    setShowDepartmentFilter(!showDepartmentFilter);
+  };
+
+  // Handle department selection and close dropdown
+  const handleDepartmentSelect = (dept: string) => {
+    setSelectedDepartment(dept);
+    setShowDepartmentFilter(false); // Close dropdown after selection
   };
 
   if (loading) {
@@ -287,16 +359,128 @@ export default function StaffScreen() {
             </TouchableOpacity>
           </Animated.View>
 
+          {/* Search and Filter Section - MOVED HERE AFTER STATS */}
+          <View ref={searchSectionRef} style={styles.searchContainer}>
+            {/* Search Input */}
+            <View style={styles.searchInputContainer}>
+              <Search size={20} color="#6B7280" style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search faculty by name..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholderTextColor="#9CA3AF"
+              />
+              {searchQuery ? (
+                <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+                  <X size={16} color="#6B7280" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* Filter Controls */}
+            <View style={styles.filterControls}>
+              <TouchableOpacity
+                style={[styles.filterButton, showDepartmentFilter && styles.filterButtonActive]}
+                onPress={toggleDepartmentFilter}
+                activeOpacity={0.7}
+              >
+                <Filter size={16} color={showDepartmentFilter ? "#3B82F6" : "#6B7280"} />
+                <Text style={[styles.filterButtonText, showDepartmentFilter && styles.filterButtonTextActive]}>
+                  Department
+                </Text>
+              </TouchableOpacity>
+
+              {(searchQuery || selectedDepartment) ? (
+                <TouchableOpacity
+                  style={styles.clearFiltersButton}
+                  onPress={clearFilters}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.clearFiltersText}>Clear All</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* Department Filter Dropdown */}
+            <Animated.View
+              style={[
+                styles.departmentFilter,
+                { transform: [{ translateY: filterSlideAnim }] }
+              ]}
+            >
+              {showDepartmentFilter && (
+                <View style={styles.departmentOptions}>
+                  <TouchableOpacity
+                    style={[styles.departmentOption, !selectedDepartment && styles.departmentOptionActive]}
+                    onPress={() => handleDepartmentSelect('')}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.departmentOptionText, !selectedDepartment && styles.departmentOptionTextActive]}>
+                      All Departments
+                    </Text>
+                  </TouchableOpacity>
+                  {departments.map(dept => (
+                    <TouchableOpacity
+                      key={dept}
+                      style={[styles.departmentOption, selectedDepartment === dept && styles.departmentOptionActive]}
+                      onPress={() => handleDepartmentSelect(dept)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.departmentOptionText, selectedDepartment === dept && styles.departmentOptionTextActive]}>
+                        {dept}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </Animated.View>
+          </View>
+
+          {/* Active Filters Display */}
+          {(searchQuery || selectedDepartment) && (
+            <View style={styles.activeFilters}>
+              <Text style={styles.activeFiltersLabel}>Active Filters:</Text>
+              {searchQuery && (
+                <View style={styles.filterTag}>
+                  <Text style={styles.filterTagText}>Name: "{searchQuery}"</Text>
+                </View>
+              )}
+              {selectedDepartment && (
+                <View style={styles.filterTag}>
+                  <Text style={styles.filterTagText}>Dept: {selectedDepartment}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
           {/* Staff List Anchor */}
           <View ref={staffListAnchorRef} style={styles.sectionAnchor} />
 
           {/* Faculty List */}
           <View style={styles.sectionHeader}>
             <UserCheck size={20} color="#3B82F6" />
-            <Text style={styles.sectionTitle}>Faculty Members</Text>
+            <Text style={styles.sectionTitle}>
+              Faculty Members ({filteredStaff.length})
+            </Text>
           </View>
 
-          {staffStats.map(staff => (
+          {/* No Results Message */}
+          {filteredStaff.length === 0 && (
+            <Card style={styles.noResultsCard}>
+              <CardContent style={styles.noResultsContent}>
+                <Text style={styles.noResultsText}>
+                  No faculty members found matching your criteria.
+                </Text>
+                <TouchableOpacity onPress={clearFilters} style={styles.clearFiltersInlineButton}>
+                  <Text style={styles.clearFiltersInlineText}>Clear Filters</Text>
+                </TouchableOpacity>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Faculty List */}
+          {filteredStaff.map(staff => (
             <TouchableOpacity
               key={staff.userId}
               onPress={() => router.push(`/staff/${staff.userId}`)}
@@ -377,6 +561,155 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#6B7280',
+  },
+  // Search and Filter Styles
+  searchContainer: {
+    marginBottom: 24,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  searchIcon: {
+    marginRight: 12,
+  },
+  searchInput: {
+    flex: 1,
+    height: 48,
+    fontSize: 16,
+    color: '#111827',
+  },
+  clearButton: {
+    padding: 4,
+  },
+  filterControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  filterButtonActive: {
+    backgroundColor: '#EBF4FF',
+    borderColor: '#3B82F6',
+  },
+  filterButtonText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  filterButtonTextActive: {
+    color: '#3B82F6',
+  },
+  clearFiltersButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  clearFiltersText: {
+    color: '#EF4444',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  departmentFilter: {
+    overflow: 'hidden',
+  },
+  departmentOptions: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginTop: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  departmentOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  departmentOptionActive: {
+    backgroundColor: '#EBF4FF',
+  },
+  departmentOptionText: {
+    fontSize: 14,
+    color: '#374151',
+  },
+  departmentOptionTextActive: {
+    color: '#3B82F6',
+    fontWeight: '500',
+  },
+  activeFilters: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 8,
+  },
+  activeFiltersLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginRight: 8,
+  },
+  filterTag: {
+    backgroundColor: '#EBF4FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  filterTagText: {
+    fontSize: 12,
+    color: '#3B82F6',
+    fontWeight: '500',
+  },
+  noResultsCard: {
+    marginBottom: 16,
+  },
+  noResultsContent: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  noResultsText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  clearFiltersInlineButton: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  clearFiltersInlineText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
   },
   statsContainer: {
     flexDirection: 'row',

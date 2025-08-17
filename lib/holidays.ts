@@ -347,3 +347,224 @@ export const getBlockedDatesInRange = async (
   
   return blockedDates;
 };
+
+// Check if a date range would create a "holiday sandwich" (continuous leave around holidays)
+export const checkHolidaySandwich = async (
+  fromDate: Date, 
+  toDate: Date
+): Promise<{
+  isHolidaySandwich: boolean;
+  reason?: string;
+  blockedDates?: Date[];
+}> => {
+  try {
+    // Get the date range including buffer days before and after
+    const bufferDays = 2; // Check 2 days before and after
+    const checkStartDate = new Date(fromDate);
+    checkStartDate.setDate(checkStartDate.getDate() - bufferDays);
+    
+    const checkEndDate = new Date(toDate);
+    checkEndDate.setDate(checkEndDate.getDate() + bufferDays);
+    
+    // Get all holidays in the extended range
+    const { holidays } = await hasHolidaysInRange(checkStartDate, checkEndDate);
+    
+    if (holidays.length === 0) {
+      return { isHolidaySandwich: false };
+    }
+    
+    // Check for holiday sandwiching patterns
+    const holidayDates = holidays.map(h => h.date);
+    const requestedDates: Date[] = [];
+    
+    // Generate all requested leave dates
+    const currentDate = new Date(fromDate);
+    while (currentDate <= toDate) {
+      requestedDates.push(new Date(currentDate));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    // Check each holiday for sandwiching
+    for (const holidayDate of holidayDates) {
+      const dayBefore = new Date(holidayDate);
+      dayBefore.setDate(dayBefore.getDate() - 1);
+      
+      const dayAfter = new Date(holidayDate);
+      dayAfter.setDate(dayAfter.getDate() + 1);
+      
+      // Check if user is requesting leave on the day before AND after a holiday
+      const hasLeaveBefore = requestedDates.some(date => 
+        date.toDateString() === dayBefore.toDateString()
+      );
+      
+      const hasLeaveAfter = requestedDates.some(date => 
+        date.toDateString() === dayAfter.toDateString()
+      );
+      
+      if (hasLeaveBefore && hasLeaveAfter) {
+        const holiday = holidays.find(h => 
+          h.date.toDateString() === holidayDate.toDateString()
+        );
+        
+        return {
+          isHolidaySandwich: true,
+          reason: `Cannot take leave on both ${dayBefore.toLocaleDateString('en-GB')} and ${dayAfter.toLocaleDateString('en-GB')} as it creates continuous leave around ${holiday?.name} (${holidayDate.toLocaleDateString('en-GB')})`,
+          blockedDates: [dayBefore, dayAfter]
+        };
+      }
+      
+      // Check for extended patterns (multiple days before/after)
+      const twoDaysBefore = new Date(holidayDate);
+      twoDaysBefore.setDate(twoDaysBefore.getDate() - 2);
+      
+      const twoDaysAfter = new Date(holidayDate);
+      twoDaysAfter.setDate(twoDaysAfter.getDate() + 2);
+      
+      // Check if creating a long continuous leave (3+ days including holiday)
+      const hasExtendedLeaveBefore = requestedDates.some(date => 
+        date.toDateString() === twoDaysBefore.toDateString() || 
+        date.toDateString() === dayBefore.toDateString()
+      );
+      
+      const hasExtendedLeaveAfter = requestedDates.some(date => 
+        date.toDateString() === dayAfter.toDateString() || 
+        date.toDateString() === twoDaysAfter.toDateString()
+      );
+      
+      if (hasExtendedLeaveBefore && hasExtendedLeaveAfter) {
+        const holiday = holidays.find(h => 
+          h.date.toDateString() === holidayDate.toDateString()
+        );
+        
+        return {
+          isHolidaySandwich: true,
+          reason: `Cannot create extended continuous leave around ${holiday?.name} (${holidayDate.toLocaleDateString('en-GB')}). This would result in excessive consecutive days off.`,
+          blockedDates: [twoDaysBefore, dayBefore, dayAfter, twoDaysAfter]
+        };
+      }
+    }
+    
+    // Check for weekend sandwiching as well
+    for (const requestDate of requestedDates) {
+      const dayOfWeek = requestDate.getDay();
+      
+      // If requesting leave on Friday, check if Monday is also requested (weekend sandwich)
+      if (dayOfWeek === 5) { // Friday
+        const nextMonday = new Date(requestDate);
+        nextMonday.setDate(nextMonday.getDate() + 3); // Friday + 3 = Monday
+        
+        const hasMondayLeave = requestedDates.some(date => 
+          date.toDateString() === nextMonday.toDateString()
+        );
+        
+        if (hasMondayLeave) {
+          return {
+            isHolidaySandwich: true,
+            reason: `Cannot take leave on both Friday (${requestDate.toLocaleDateString('en-GB')}) and Monday (${nextMonday.toLocaleDateString('en-GB')}) as it creates continuous leave around the weekend`,
+            blockedDates: [requestDate, nextMonday]
+          };
+        }
+      }
+      
+      // If requesting leave on Monday, check if previous Friday is also requested
+      if (dayOfWeek === 1) { // Monday
+        const prevFriday = new Date(requestDate);
+        prevFriday.setDate(prevFriday.getDate() - 3); // Monday - 3 = Friday
+        
+        const hasFridayLeave = requestedDates.some(date => 
+          date.toDateString() === prevFriday.toDateString()
+        );
+        
+        if (hasFridayLeave) {
+          return {
+            isHolidaySandwich: true,
+            reason: `Cannot take leave on both Friday (${prevFriday.toLocaleDateString('en-GB')}) and Monday (${requestDate.toLocaleDateString('en-GB')}) as it creates continuous leave around the weekend`,
+            blockedDates: [prevFriday, requestDate]
+          };
+        }
+      }
+    }
+    
+    return { isHolidaySandwich: false };
+    
+  } catch (error) {
+    console.error('Error checking holiday sandwich:', error);
+    return { isHolidaySandwich: false };
+  }
+};
+
+// Enhanced validation for leave requests
+export const validateLeaveRequest = async (
+  fromDate: Date,
+  toDate: Date,
+  leaveType: string
+): Promise<{
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+}> => {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  
+  try {
+    // Skip validation for compensation leave (they can take leave on any day)
+    if (leaveType === 'Compensation') {
+      return { isValid: true, errors, warnings };
+    }
+    
+    // Check for basic date validation
+    if (fromDate > toDate) {
+      errors.push('From date cannot be after to date');
+    }
+    
+    // Check if dates are in the past
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (fromDate < today) {
+      errors.push('Cannot request leave for past dates');
+    }
+    
+    // Check for holiday sandwiching
+    const sandwichCheck = await checkHolidaySandwich(fromDate, toDate);
+    if (sandwichCheck.isHolidaySandwich) {
+      errors.push(sandwichCheck.reason || 'Invalid leave pattern detected');
+    }
+    
+    // Check if any requested dates fall on existing holidays
+    const { hasHolidays, holidays } = await hasHolidaysInRange(fromDate, toDate);
+    if (hasHolidays && leaveType !== 'Compensation') {
+      const holidayNames = holidays.map(h => `${h.name} (${h.date.toLocaleDateString('en-GB')})`);
+      warnings.push(`Your leave request includes holidays: ${holidayNames.join(', ')}. Consider adjusting your dates.`);
+    }
+    
+    // Check for weekend days in the request
+    const currentDate = new Date(fromDate);
+    const weekendDays: string[] = [];
+    
+    while (currentDate <= toDate) {
+      if (isWeekend(currentDate)) {
+        weekendDays.push(currentDate.toLocaleDateString('en-GB'));
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    if (weekendDays.length > 0 && leaveType !== 'Compensation') {
+      warnings.push(`Your leave request includes weekends: ${weekendDays.join(', ')}. These are non-working days.`);
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings
+    };
+    
+  } catch (error) {
+    console.error('Error validating leave request:', error);
+    return {
+      isValid: false,
+      errors: ['Unable to validate leave request. Please try again.'],
+      warnings
+    };
+  }
+};
