@@ -43,10 +43,42 @@ export default function HomeScreen() {
   const approvedRequests = useMemo(() => requests.filter(r => r.status === 'Approved'), [requests]);
   const deniedRequests = useMemo(() => requests.filter(r => r.status === 'Rejected'), [requests]);
 
+  // Calculate leave type statistics for each pending request
+  const pendingRequestsWithStats = useMemo(() => {
+    return pendingRequests.map(pendingRequest => {
+      // Count approved requests of the same type and subtype
+      const sameTypeApproved = approvedRequests.filter(approved => {
+        // For regular leave, match both leaveType and leaveSubType
+        if (pendingRequest.leaveType === 'Leave' && approved.leaveType === 'Leave') {
+          return approved.leaveSubType === pendingRequest.leaveSubType;
+        }
+        // For other types (Permission, On Duty, Compensation), just match leaveType
+        return approved.leaveType === pendingRequest.leaveType;
+      });
+
+      // Calculate total days taken for this leave type
+      const totalDaysTaken = sameTypeApproved.reduce((total, request) => {
+        // Extract number from duration string (e.g., "2 working days" -> 2)
+        const durationMatch = request.duration?.match(/(\d+)/);
+        const days = durationMatch ? parseInt(durationMatch[1], 10) : 1;
+        return total + days;
+      }, 0);
+
+      return {
+        ...pendingRequest,
+        previousCount: sameTypeApproved.length,
+        totalDaysTaken,
+        leaveTypeDisplay: pendingRequest.leaveType === 'Leave'
+          ? pendingRequest.leaveSubType || 'Leave'
+          : pendingRequest.leaveType
+      };
+    });
+  }, [pendingRequests, approvedRequests]);
+
   // Director-specific stats
   const directorStats = useMemo(() => {
     if (user?.role !== 'Director') return null;
-    
+
     return {
       totalRequests: requests.length,
       pendingCount: pendingRequests.length,
@@ -61,10 +93,10 @@ export default function HomeScreen() {
       const currentUser = await getCurrentUser();
       if (!currentUser) throw new Error('User not found');
       setUser(currentUser);
-      
+
       // Load requests once
       await loadRequests(currentUser);
-      
+
       // Start animations for director view
       if (currentUser.role === 'Director') {
         Animated.parallel([
@@ -112,9 +144,9 @@ export default function HomeScreen() {
   // Simple refresh function
   const onRefresh = useCallback(async () => {
     if (refreshing || !user) return;
-    
+
     setRefreshing(true);
-    
+
     // Haptic feedback
     try {
       const { impactAsync, ImpactFeedbackStyle } = await import('expo-haptics');
@@ -122,7 +154,7 @@ export default function HomeScreen() {
     } catch (error) {
       // Haptics not available
     }
-    
+
     await loadRequests(user);
     setRefreshing(false);
   }, [user, refreshing, loadRequests]);
@@ -149,9 +181,9 @@ export default function HomeScreen() {
 
   // Optimistic update handler (for immediate UI feedback only)
   const handleOptimisticUpdate = useCallback((requestId: string, status: 'Approved' | 'Rejected') => {
-    setRequests(prevRequests => 
-      prevRequests.map(request => 
-        request.id === requestId 
+    setRequests(prevRequests =>
+      prevRequests.map(request =>
+        request.id === requestId
           ? { ...request, status, updatedAt: new Date() }
           : request
       )
@@ -184,7 +216,7 @@ export default function HomeScreen() {
   if (user?.role === 'Director') {
     return (
       <SafeAreaView style={styles.container}>
-        <Animated.View 
+        <Animated.View
           style={[
             styles.animatedContainer,
             {
@@ -207,7 +239,7 @@ export default function HomeScreen() {
             </View>
 
             {/* Animated Stats Cards with navigation */}
-            <Animated.View 
+            <Animated.View
               style={[
                 styles.directorStatsContainer,
                 { transform: [{ scale: statsScaleAnim }] },
@@ -251,7 +283,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </Animated.View>
 
-            <Animated.View 
+            <Animated.View
               style={[
                 styles.directorStatsContainer,
                 { transform: [{ scale: statsScaleAnim }] },
@@ -309,7 +341,7 @@ export default function HomeScreen() {
 
             <View style={styles.directorPendingContainer}>
               <FlatList
-                data={pendingRequests}
+                data={pendingRequestsWithStats}
                 keyExtractor={item => item.id}
                 scrollEnabled={false}
                 renderItem={({ item }) => (
@@ -331,7 +363,7 @@ export default function HomeScreen() {
 
             {/* Approved Requests Section */}
             <View ref={approvedHeaderRef} style={styles.sectionAnchor} />
-            
+
             <TouchableOpacity
               style={styles.expandableHeader}
               onPress={() => setExpanded(e => ({ ...e, approved: !e.approved }))}
@@ -370,7 +402,7 @@ export default function HomeScreen() {
 
             {/* Denied Requests Section */}
             <View ref={deniedHeaderRef} style={styles.sectionAnchor} />
-            
+
             <TouchableOpacity
               style={styles.expandableHeader}
               onPress={() => setExpanded(e => ({ ...e, denied: !e.denied }))}
@@ -431,7 +463,7 @@ export default function HomeScreen() {
           </View>
 
           <View ref={approvedHeaderRef} collapsable={false} />
-          
+
           {/* Stats as navigation buttons */}
           <View style={styles.statsContainer}>
             <TouchableOpacity
@@ -464,10 +496,10 @@ export default function HomeScreen() {
                   const headerHeight = 100;
                   const statsHeight = 120;
                   const targetY = headerHeight + statsHeight + 40;
-                  
-                  scrollViewRef.current.scrollTo({ 
-                    y: targetY, 
-                    animated: true 
+
+                  scrollViewRef.current.scrollTo({
+                    y: targetY,
+                    animated: true
                   });
                 }
               }}
@@ -485,15 +517,15 @@ export default function HomeScreen() {
           </View>
 
           <View style={{ height: 20 }} />
-          
+
           <View ref={pendingAnchorRef} collapsable={false} style={{ height: 1 }} />
-          
+
           {/* Pending Requests - Container hidden but content visible */}
           <View style={styles.pendingRequestsContainer}>
             {/* Pending Requests Section */}
             <Text style={styles.sectionTitle}>Pending Requests</Text>
             <FlatList
-              data={pendingRequests}
+              data={pendingRequestsWithStats}
               keyExtractor={item => item.id}
               scrollEnabled={false}
               renderItem={({ item }) => (
@@ -524,7 +556,7 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitle}>Approved Requests</Text>
             <Text style={styles.sectionToggle}>{expanded.approved ? '▲' : '▼'}</Text>
           </TouchableOpacity>
-          
+
           {expanded.approved && (
             <FlatList
               data={approvedRequests}
@@ -558,7 +590,7 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitle}>Denied Requests</Text>
             <Text style={styles.sectionToggle}>{expanded.denied ? '▲' : '▼'}</Text>
           </TouchableOpacity>
-          
+
           {expanded.denied && (
             <FlatList
               data={deniedRequests}
@@ -845,4 +877,5 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     borderColor: 'transparent',
   },
+
 });

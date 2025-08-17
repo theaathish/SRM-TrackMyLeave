@@ -10,7 +10,11 @@ import { LeaveRequest } from '@/lib/firestore';
 import { getWorkingDaysBetween } from '@/lib/holidays';
 
 interface LeaveRequestCardProps {
-  request: LeaveRequest;
+  request: LeaveRequest & {
+    previousCount?: number;
+    totalDaysTaken?: number;
+    leaveTypeDisplay?: string;
+  };
   isDirector?: boolean;
   onUpdate?: () => void;
   onOptimisticUpdate?: (requestId: string, status: 'Approved' | 'Rejected') => void;
@@ -215,6 +219,15 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
             </View>
           </View>
 
+          {/* Leave History Stats Section - Only for pending requests */}
+          {request.status === 'Pending' && request.previousCount !== undefined && (
+            <View style={styles.leaveHistoryContainer}>
+              <Text style={styles.leaveHistoryText}>
+                [{request.leaveTypeDisplay || 'Leave'}: {request.previousCount} taken before]
+              </Text>
+            </View>
+          )}
+
           <View style={styles.dateContainer}>
             <Text style={styles.dateLabel}>
               {request.requestType === 'Permission' ? 'Date & Time' : 'Duration'}
@@ -359,6 +372,22 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginLeft: 4,
     fontWeight: '500',
+  },
+  leaveHistoryContainer: {
+    backgroundColor: '#F0F9FF',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#3B82F6',
+  },
+  leaveHistoryText: {
+    fontSize: 13,
+    color: '#1E40AF',
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   dateContainer: {
     marginBottom: 16,
