@@ -3,8 +3,7 @@ import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, collection, qu
 import { db } from './firebase';
 import { getCurrentUser } from './auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const NOTIFICATION_API = process.env.EXPO_PUBLIC_NOTIFICATION_PUSH_API;
+import { getAccessToken } from './NotificaionAuthManager';
 
 export const setupFCM = async () => {
   try {
@@ -147,7 +146,9 @@ export const removeUserToken = async (userId: string, token: string): Promise<vo
 };
 
 // FIXED: Enhanced notification sender with proper error handling and response checking
-const sendNot = async (token: string, title: string, body: string): Promise<boolean> => {
+const sendNot = async (token: string, title: string, body: string, data?: Record<string, string>): Promise<boolean> => {
+    const NOTIFICATION_API = await getAccessToken();
+
     try {
         console.log('🚀 Sending notification to token:', token.substring(0, 20) + '...');
         
@@ -180,22 +181,12 @@ const sendNot = async (token: string, title: string, body: string): Promise<bool
                     "data": {
                         "title": title,
                         "body": body,
-                        "timestamp": Date.now().toString()
+                        "timestamp": Date.now().toString(),
+                        ...(data || {})  // Add custom data
                     }
                 }
             })
         });
-
-        // Check response status
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ FCM API Error:', {
-                status: response.status,
-                statusText: response.statusText,
-                error: errorText
-            });
-            return false;
-        }
 
         const result = await response.json();
         console.log('✅ Notification sent successfully:', result);
@@ -208,7 +199,12 @@ const sendNot = async (token: string, title: string, body: string): Promise<bool
 };
 
 // FIXED: Enhanced user notification function with better error handling
-export async function sendPushNotificationToUser(userID: string, title: string, body: string): Promise<void> {
+export async function sendPushNotificationToUser(
+  userID: string, 
+  title: string, 
+  body: string,
+  data?: Record<string, string>  // Add data parameter
+): Promise<void> {
     try {
         console.log('📱 Sending notifications to user:', userID);
         
@@ -222,7 +218,7 @@ export async function sendPushNotificationToUser(userID: string, title: string, 
         console.log('📋 Found', userTokens.length, 'tokens for user');
 
         // Send notifications concurrently for better performance
-        const promises = userTokens.map(token => sendNot(token, title, body));
+        const promises = userTokens.map(token => sendNot(token, title, body, data));  // Pass data
         const results = await Promise.allSettled(promises);
         
         // Log results

@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Home, AlertCircle, ArrowLeft } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { usePathname } from "expo-router";
+import {useEffect} from 'react';
 
 export default function NotFoundScreen() {
   const handleGoHome = () => {
@@ -23,6 +25,13 @@ export default function NotFoundScreen() {
       handleGoHome();
     }
   };
+
+  const pathname = usePathname();
+
+  useEffect(() => {
+    console.warn("404 - Page not found:", pathname);
+    // Optionally send to analytics or backend
+  }, [pathname]);
 
   return (
     <LinearGradient

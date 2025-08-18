@@ -1,15 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, useLocalSearchParams } from 'expo-router';
 import { Home, Plus, User, Users } from 'lucide-react-native';
 import { getCurrentUser } from '@/lib/auth';
 
 export default function TabLayout() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Capture query parameters at the tab level
+  const params = useLocalSearchParams();
+  const notificationType = params.notificationType as string;
 
   useEffect(() => {
     loadUser();
   }, []);
+
+  // Log parameters to debug
+  useEffect(() => {
+    if (notificationType) {
+      console.log('Tab layout received notificationType:', notificationType);
+    }
+  }, [notificationType]);
 
   const loadUser = async () => {
     try {
@@ -23,7 +34,7 @@ export default function TabLayout() {
   };
 
   if (loading) {
-    return null; // Or a loading spinner
+    return null;
   }
 
   return (
@@ -41,6 +52,14 @@ export default function TabLayout() {
           height: 80,
         },
       }}
+      // Pass the notification type to all tab screens
+      screenListeners={{
+        tabPress: (e) => {
+          if (notificationType) {
+            console.log('Tab pressed with notification:', notificationType);
+          }
+        },
+      }}
     >
       <Tabs.Screen
         name="index"
@@ -48,6 +67,8 @@ export default function TabLayout() {
           title: 'Home',
           tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
         }}
+        // You can pass the params as initial params if needed
+        initialParams={{ notificationType }}
       />
       <Tabs.Screen
         name="submit"

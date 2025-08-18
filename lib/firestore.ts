@@ -211,11 +211,17 @@ export const updateLeaveRequestStatus = async (
             ? `Your ${requestData.requestType.toLowerCase()} request has been approved`
             : `Your ${requestData.requestType.toLowerCase()} request has been denied${remark ? `. Reason: ${remark}` : ''}`;
           
+          // Add notification type to data payload
+          const notificationData = {
+            type: status.toLowerCase() // 'approved' or 'rejected'
+          };
+          
           // Send HIGH PRIORITY notification to the user
           await sendPushNotificationToUser(
             requestData.userId,
             notificationTitle,
-            notificationBody
+            notificationBody,
+            notificationData  // Pass notification type
           );
         }
       } catch (error) {

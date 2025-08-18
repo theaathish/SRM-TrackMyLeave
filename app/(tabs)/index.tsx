@@ -9,6 +9,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { getLeaveRequests, LeaveRequest } from '@/lib/firestore';
 import { FileText, Users, Calendar, Clock, TrendingUp } from 'lucide-react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams, router } from 'expo-router';
 
 interface User {
   id: string;
@@ -19,6 +20,7 @@ interface User {
 }
 
 export default function HomeScreen() {
+  const { notificationType } = useLocalSearchParams<{ notificationType?: string }>();
   const [user, setUser] = useState<User | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const containerRef = useRef<View>(null);
@@ -37,6 +39,34 @@ export default function HomeScreen() {
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(30));
   const [statsScaleAnim] = useState(new Animated.Value(0.8));
+
+  console.log("notification Home:", notificationType);
+
+  // Handle notification type on mount
+  useEffect(() => {
+    if (notificationType) {
+      // Set expanded state based on notification type
+      setExpanded({
+        approved: notificationType === 'approved',
+        denied: notificationType === 'rejected',
+      });
+    }
+  }, [notificationType]);
+
+  // Scroll to section after expanding - Fixed version
+  useEffect(() => {
+    if (notificationType && requests.length > 0) {
+      const timer = setTimeout(() => {
+        if (notificationType === 'approved') {
+          scrollToSection('approved');
+        } else if (notificationType === 'rejected') {
+          scrollToSection('denied');
+        }
+      }, 500); // Increased delay to ensure content is rendered
+
+      return () => clearTimeout(timer);
+    }
+  }, [expanded, notificationType, requests]);
 
   // Add missing memoized values for filtering requests
   const pendingRequests = useMemo(() => requests.filter(r => r.status === 'Pending'), [requests]);
@@ -159,23 +189,105 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [user, refreshing, loadRequests]);
 
-  // Simple scroll to section function
-  const scrollToSection = (ref: React.RefObject<View>) => {
-    if (ref.current && scrollViewRef.current) {
-      ref.current.measureLayout(
-        scrollViewRef.current as any,
-        (x, y) => {
-          scrollViewRef.current?.scrollTo({ y: y - 20, animated: true });
-        }
-      );
+  // Fixed scroll to section function with manual position calculation
+  const scrollToSection = useCallback((section: 'pending' | 'approved' | 'denied') => {
+    if (!scrollViewRef.current) return;
+
+    // Calculate approximate positions based on content structure
+    let scrollY = 0;
+    
+    if (user?.role === 'Director') {
+      // Director view calculations
+      const headerHeight = 100;
+      const statsHeight = 200; // Two rows of stats
+      const sectionMargin = 50;
+      
+      switch (section) {
+        case 'pending':
+          scrollY = headerHeight + statsHeight + sectionMargin;
+          break;
+        case 'approved':
+          scrollY = headerHeight + statsHeight + sectionMargin + 900; // After pending section
+          break;
+        case 'denied':
+          scrollY = headerHeight + statsHeight + sectionMargin + 1400; // After pending + approved
+          break;
+      }
+    } else {
+      // Staff view calculations
+      const headerHeight = 120;
+      const statsHeight = 100;
+      const sectionMargin = 40;
+      
+      switch (section) {
+        case 'pending':
+          scrollY = headerHeight + statsHeight + sectionMargin;
+          break;
+        case 'approved':
+          scrollY = headerHeight + statsHeight + sectionMargin + 400; // After pending
+          break;
+        case 'denied':
+          scrollY = headerHeight + statsHeight + sectionMargin + 800; // After pending + approved
+          break;
+      }
     }
-  };
+
+    console.log(`Scrolling to ${section} at position ${scrollY}`);
+    scrollViewRef.current.scrollTo({ 
+      y: scrollY, 
+      animated: true 
+    });
+  }, [user?.role]);
+
+  // Alternative method using refs with better measurement
+  const scrollToSectionWithRef = useCallback((section: 'pending' | 'approved' | 'denied') => {
+    if (!scrollViewRef.current) return;
+
+    let targetRef: React.RefObject<View> | null = null;
+    
+    switch (section) {
+      case 'pending':
+        targetRef = pendingAnchorRef;
+        break;
+      case 'approved':
+        targetRef = approvedHeaderRef;
+        break;
+      case 'denied':
+        targetRef = deniedHeaderRef;
+        break;
+    }
+
+    if (!targetRef?.current) {
+      console.log('Target ref not found, using manual scroll');
+      scrollToSection(section);
+      return;
+    }
+
+    // First try measureLayout with the scroll view as parent
+    targetRef.current.measureLayout(
+      scrollViewRef.current as any,
+      (x, y, width, height) => {
+        console.log(`Measured position for ${section}: y=${y}`);
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ 
+            y: Math.max(0, y - 80), // 80px offset from top
+            animated: true 
+          });
+        }
+      },
+      (error) => {
+        console.warn('measureLayout failed, using manual calculation:', error);
+        scrollToSection(section);
+      }
+    );
+  }, [scrollToSection]);
 
   // Remove real-time useEffect, keep only simple focus effect
   useFocusEffect(
     useCallback(() => {
       console.log('Screen focused, loading data...');
       loadUserData();
+      //onRefresh();
     }, [loadUserData])
   );
 
@@ -189,6 +301,24 @@ export default function HomeScreen() {
       )
     );
   }, []);
+
+  // Enhanced navigation handlers with better scrolling
+  const handleNavigateToSection = useCallback((section: 'pending' | 'approved' | 'denied') => {
+    console.log(`Navigating to ${section} section`);
+    
+    // First expand the section if needed
+    if (section === 'approved' || section === 'denied') {
+      setExpanded(prev => ({ ...prev, [section]: true }));
+    }
+
+    // Use a longer delay for expandable sections to ensure content is rendered
+    const delay = section === 'pending' ? 100 : 400;
+    
+    setTimeout(() => {
+      // Try the ref-based method first, fallback to manual calculation
+      scrollToSectionWithRef(section);
+    }, delay);
+  }, [scrollToSectionWithRef]);
 
   // Simple refresh control
   const refreshControl = (
@@ -232,212 +362,205 @@ export default function HomeScreen() {
             refreshControl={refreshControl}
             showsVerticalScrollIndicator={false}
           >
-            {/* Enhanced Header for Director */}
-            <View style={styles.directorHeader}>
-              <Text style={styles.directorWelcomeText}>Director Dashboard</Text>
-              <Text style={styles.directorSubtitle}>Welcome, {user?.name} • {user?.department}</Text>
-            </View>
-
-            {/* Animated Stats Cards with navigation */}
-            <Animated.View
-              style={[
-                styles.directorStatsContainer,
-                { transform: [{ scale: statsScaleAnim }] },
-              ]}
-            >
-              {/* Total Requests - Navigate to Approved */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                  setExpanded(e => ({ ...e, approved: true }));
-                  setTimeout(() => scrollToSection(approvedHeaderRef), 100);
-                }}
-                style={styles.directorStatButton}
-              >
-                <Card style={[styles.directorStatCard, styles.primaryCard]}>
-                  <CardContent style={styles.directorStatContent}>
-                    <TrendingUp size={24} color="#3B82F6" />
-                    <Text style={[styles.directorStatNumber, styles.primaryNumber]}>
-                      {directorStats?.totalRequests || 0}
-                    </Text>
-                    <Text style={styles.directorStatLabel}>Total Requests</Text>
-                  </CardContent>
-                </Card>
-              </TouchableOpacity>
-
-              {/* Pending Requests - Navigate to Pending */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => scrollToSection(pendingAnchorRef)}
-                style={styles.directorStatButton}
-              >
-                <Card style={[styles.directorStatCard, styles.warningCard]}>
-                  <CardContent style={styles.directorStatContent}>
-                    <Clock size={24} color="#F59E0B" />
-                    <Text style={[styles.directorStatNumber, styles.warningNumber]}>
-                      {directorStats?.pendingCount || 0}
-                    </Text>
-                    <Text style={styles.directorStatLabel}>Pending</Text>
-                  </CardContent>
-                </Card>
-              </TouchableOpacity>
-            </Animated.View>
-
-            <Animated.View
-              style={[
-                styles.directorStatsContainer,
-                { transform: [{ scale: statsScaleAnim }] },
-              ]}
-            >
-              {/* Approved Requests - Navigate to Approved */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                  setExpanded(e => ({ ...e, approved: true }));
-                  setTimeout(() => scrollToSection(approvedHeaderRef), 100);
-                }}
-                style={styles.directorStatButton}
-              >
-                <Card style={[styles.directorStatCard, styles.successCard]}>
-                  <CardContent style={styles.directorStatContent}>
-                    <Calendar size={24} color="#10B981" />
-                    <Text style={[styles.directorStatNumber, styles.successNumber]}>
-                      {directorStats?.approvedCount || 0}
-                    </Text>
-                    <Text style={styles.directorStatLabel}>Approved</Text>
-                  </CardContent>
-                </Card>
-              </TouchableOpacity>
-
-              {/* Denied Requests - Navigate to Denied */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                  setExpanded(e => ({ ...e, denied: true }));
-                  setTimeout(() => scrollToSection(deniedHeaderRef), 100);
-                }}
-                style={styles.directorStatButton}
-              >
-                <Card style={[styles.directorStatCard, styles.dangerCard]}>
-                  <CardContent style={styles.directorStatContent}>
-                    <FileText size={24} color="#EF4444" />
-                    <Text style={[styles.directorStatNumber, styles.dangerNumber]}>
-                      {directorStats?.deniedCount || 0}
-                    </Text>
-                    <Text style={styles.directorStatLabel}>Denied</Text>
-                  </CardContent>
-                </Card>
-              </TouchableOpacity>
-            </Animated.View>
-
-            {/* Pending Requests Anchor */}
-            <View ref={pendingAnchorRef} style={styles.sectionAnchor} />
-
-            {/* Pending Requests Section */}
-            <View style={styles.directorSectionHeader}>
-              <Clock size={20} color="#F59E0B" />
-              <Text style={styles.directorSectionTitle}>Pending Requests</Text>
-            </View>
-
-            <View style={styles.directorPendingContainer}>
-              <FlatList
-                data={pendingRequestsWithStats}
-                keyExtractor={item => item.id}
-                scrollEnabled={false}
-                renderItem={({ item }) => (
-                  <LeaveRequestCard
-                    request={item}
-                    isDirector={true}
-                    onUpdate={onRefresh}
-                    onOptimisticUpdate={handleOptimisticUpdate}
-                  />
-                )}
-                ListEmptyComponent={
-                  <View style={styles.emptyStateContainer}>
-                    <Clock size={48} color="#9CA3AF" />
-                    <Text style={styles.emptyStateText}>No pending requests</Text>
-                  </View>
-                }
-              />
-            </View>
-
-            {/* Approved Requests Section */}
-            <View ref={approvedHeaderRef} style={styles.sectionAnchor} />
-
-            <TouchableOpacity
-              style={styles.expandableHeader}
-              onPress={() => setExpanded(e => ({ ...e, approved: !e.approved }))}
-              activeOpacity={0.7}
-            >
-              <View style={styles.directorSectionHeader}>
-                <Calendar size={20} color="#10B981" />
-                <Text style={styles.directorSectionTitle}>Approved Requests</Text>
+            <View ref={containerRef} style={{ flex: 1 }}>
+              {/* Enhanced Header for Director */}
+              <View style={styles.directorHeader}>
+                <Text style={styles.directorWelcomeText}>Director Dashboard</Text>
+                <Text style={styles.directorSubtitle}>Welcome, {user?.name} • {user?.department}</Text>
               </View>
-              <Text style={styles.expandToggle}>
-                {expanded.approved ? '▲' : '▼'}
-              </Text>
-            </TouchableOpacity>
 
-            {expanded.approved && (
-              <FlatList
-                data={approvedRequests}
-                keyExtractor={item => item.id}
-                scrollEnabled={false}
-                renderItem={({ item }) => (
-                  <LeaveRequestCard
-                    request={item}
-                    isDirector={true}
-                    onUpdate={onRefresh}
-                    onOptimisticUpdate={handleOptimisticUpdate}
-                  />
-                )}
-                ListEmptyComponent={
-                  <View style={styles.emptyStateContainer}>
-                    <Calendar size={48} color="#9CA3AF" />
-                    <Text style={styles.emptyStateText}>No approved requests</Text>
-                  </View>
-                }
-              />
-            )}
+              {/* Animated Stats Cards with navigation */}
+              <Animated.View
+                style={[
+                  styles.directorStatsContainer,
+                  { transform: [{ scale: statsScaleAnim }] },
+                ]}
+              >
+                {/* Total Requests - Navigate to Approved */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handleNavigateToSection('approved')}
+                  style={styles.directorStatButton}
+                >
+                  <Card style={[styles.directorStatCard, styles.primaryCard]}>
+                    <CardContent style={styles.directorStatContent}>
+                      <TrendingUp size={24} color="#3B82F6" />
+                      <Text style={[styles.directorStatNumber, styles.primaryNumber]}>
+                        {directorStats?.totalRequests || 0}
+                      </Text>
+                      <Text style={styles.directorStatLabel}>Total Requests</Text>
+                    </CardContent>
+                  </Card>
+                </TouchableOpacity>
 
-            {/* Denied Requests Section */}
-            <View ref={deniedHeaderRef} style={styles.sectionAnchor} />
+                {/* Pending Requests - Navigate to Pending */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handleNavigateToSection('pending')}
+                  style={styles.directorStatButton}
+                >
+                  <Card style={[styles.directorStatCard, styles.warningCard]}>
+                    <CardContent style={styles.directorStatContent}>
+                      <Clock size={24} color="#F59E0B" />
+                      <Text style={[styles.directorStatNumber, styles.warningNumber]}>
+                        {directorStats?.pendingCount || 0}
+                      </Text>
+                      <Text style={styles.directorStatLabel}>Pending</Text>
+                    </CardContent>
+                  </Card>
+                </TouchableOpacity>
+              </Animated.View>
 
-            <TouchableOpacity
-              style={styles.expandableHeader}
-              onPress={() => setExpanded(e => ({ ...e, denied: !e.denied }))}
-              activeOpacity={0.7}
-            >
+              <Animated.View
+                style={[
+                  styles.directorStatsContainer,
+                  { transform: [{ scale: statsScaleAnim }] },
+                ]}
+              >
+                {/* Approved Requests - Navigate to Approved */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handleNavigateToSection('approved')}
+                  style={styles.directorStatButton}
+                >
+                  <Card style={[styles.directorStatCard, styles.successCard]}>
+                    <CardContent style={styles.directorStatContent}>
+                      <Calendar size={24} color="#10B981" />
+                      <Text style={[styles.directorStatNumber, styles.successNumber]}>
+                        {directorStats?.approvedCount || 0}
+                      </Text>
+                      <Text style={styles.directorStatLabel}>Approved</Text>
+                    </CardContent>
+                  </Card>
+                </TouchableOpacity>
+
+                {/* Denied Requests - Navigate to Denied */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handleNavigateToSection('denied')}
+                  style={styles.directorStatButton}
+                >
+                  <Card style={[styles.directorStatCard, styles.dangerCard]}>
+                    <CardContent style={styles.directorStatContent}>
+                      <FileText size={24} color="#EF4444" />
+                      <Text style={[styles.directorStatNumber, styles.dangerNumber]}>
+                        {directorStats?.deniedCount || 0}
+                      </Text>
+                      <Text style={styles.directorStatLabel}>Denied</Text>
+                    </CardContent>
+                  </Card>
+                </TouchableOpacity>
+              </Animated.View>
+
+              {/* Pending Requests Anchor */}
+              <View ref={pendingAnchorRef} style={styles.sectionAnchor} />
+
+              {/* Pending Requests Section */}
               <View style={styles.directorSectionHeader}>
-                <FileText size={20} color="#EF4444" />
-                <Text style={styles.directorSectionTitle}>Denied Requests</Text>
+                <Clock size={20} color="#F59E0B" />
+                <Text style={styles.directorSectionTitle}>Pending Requests</Text>
               </View>
-              <Text style={styles.expandToggle}>
-                {expanded.denied ? '▲' : '▼'}
-              </Text>
-            </TouchableOpacity>
 
-            {expanded.denied && (
-              <FlatList
-                data={deniedRequests}
-                keyExtractor={item => item.id}
-                scrollEnabled={false}
-                renderItem={({ item }) => (
-                  <LeaveRequestCard
-                    request={item}
-                    isDirector={true}
-                    onUpdate={onRefresh}
-                    onOptimisticUpdate={handleOptimisticUpdate}
-                  />
-                )}
-                ListEmptyComponent={
-                  <View style={styles.emptyStateContainer}>
-                    <FileText size={48} color="#9CA3AF" />
-                    <Text style={styles.emptyStateText}>No denied requests</Text>
-                  </View>
-                }
-              />
-            )}
+              <View style={styles.directorPendingContainer}>
+                <FlatList
+                  data={pendingRequestsWithStats}
+                  keyExtractor={item => item.id}
+                  scrollEnabled={false}
+                  renderItem={({ item }) => (
+                    <LeaveRequestCard
+                      request={item}
+                      isDirector={true}
+                      onUpdate={onRefresh}
+                      onOptimisticUpdate={handleOptimisticUpdate}
+                    />
+                  )}
+                  ListEmptyComponent={
+                    <View style={styles.emptyStateContainer}>
+                      <Clock size={48} color="#9CA3AF" />
+                      <Text style={styles.emptyStateText}>No pending requests</Text>
+                    </View>
+                  }
+                />
+              </View>
+
+              {/* Approved Requests Section */}
+              <View ref={approvedHeaderRef} style={styles.sectionAnchor} />
+
+              <TouchableOpacity
+                style={styles.expandableHeader}
+                onPress={() => setExpanded(e => ({ ...e, approved: !e.approved }))}
+                activeOpacity={0.7}
+              >
+                <View style={styles.directorSectionHeader}>
+                  <Calendar size={20} color="#10B981" />
+                  <Text style={styles.directorSectionTitle}>Approved Requests</Text>
+                </View>
+                <Text style={styles.expandToggle}>
+                  {expanded.approved ? '▲' : '▼'}
+                </Text>
+              </TouchableOpacity>
+
+              {expanded.approved && (
+                <FlatList
+                  data={approvedRequests}
+                  keyExtractor={item => item.id}
+                  scrollEnabled={false}
+                  renderItem={({ item }) => (
+                    <LeaveRequestCard
+                      request={item}
+                      isDirector={true}
+                      onUpdate={onRefresh}
+                      onOptimisticUpdate={handleOptimisticUpdate}
+                    />
+                  )}
+                  ListEmptyComponent={
+                    <View style={styles.emptyStateContainer}>
+                      <Calendar size={48} color="#9CA3AF" />
+                      <Text style={styles.emptyStateText}>No approved requests</Text>
+                    </View>
+                  }
+                />
+              )}
+
+              {/* Denied Requests Section */}
+              <View ref={deniedHeaderRef} style={styles.sectionAnchor} />
+
+              <TouchableOpacity
+                style={styles.expandableHeader}
+                onPress={() => setExpanded(e => ({ ...e, denied: !e.denied }))}
+                activeOpacity={0.7}
+              >
+                <View style={styles.directorSectionHeader}>
+                  <FileText size={20} color="#EF4444" />
+                  <Text style={styles.directorSectionTitle}>Denied Requests</Text>
+                </View>
+                <Text style={styles.expandToggle}>
+                  {expanded.denied ? '▲' : '▼'}
+                </Text>
+              </TouchableOpacity>
+
+              {expanded.denied && (
+                <FlatList
+                  data={deniedRequests}
+                  keyExtractor={item => item.id}
+                  scrollEnabled={false}
+                  renderItem={({ item }) => (
+                    <LeaveRequestCard
+                      request={item}
+                      isDirector={true}
+                      onUpdate={onRefresh}
+                      onOptimisticUpdate={handleOptimisticUpdate}
+                    />
+                  )}
+                  ListEmptyComponent={
+                    <View style={styles.emptyStateContainer}>
+                      <FileText size={48} color="#9CA3AF" />
+                      <Text style={styles.emptyStateText}>No denied requests</Text>
+                    </View>
+                  }
+                />
+              )}
+            </View>
           </ScrollView>
         </Animated.View>
       </SafeAreaView>
@@ -462,23 +585,13 @@ export default function HomeScreen() {
             <Text style={styles.roleText}>{user?.department} • Faculty</Text>
           </View>
 
-          <View ref={approvedHeaderRef} collapsable={false} />
+          <View ref={approvedHeaderRef} style={styles.sectionAnchor} />
 
           {/* Stats as navigation buttons */}
           <View style={styles.statsContainer}>
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => {
-                setExpanded(e => ({ ...e, approved: true, denied: true }));
-                setTimeout(() => {
-                  if (approvedHeaderRef.current && containerRef.current && scrollViewRef.current) {
-                    approvedHeaderRef.current.measureLayout(
-                      containerRef.current,
-                      (x, y) => scrollViewRef.current?.scrollTo({ y, animated: true })
-                    );
-                  }
-                }, 250);
-              }}
+              onPress={() => handleNavigateToSection('approved')}
               style={styles.statButton}
             >
               <Card style={styles.statCard}>
@@ -491,18 +604,7 @@ export default function HomeScreen() {
 
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => {
-                if (scrollViewRef.current) {
-                  const headerHeight = 100;
-                  const statsHeight = 120;
-                  const targetY = headerHeight + statsHeight + 40;
-
-                  scrollViewRef.current.scrollTo({
-                    y: targetY,
-                    animated: true
-                  });
-                }
-              }}
+              onPress={() => handleNavigateToSection('pending')}
               style={styles.statButton}
             >
               <Card style={styles.statCard}>
@@ -518,7 +620,7 @@ export default function HomeScreen() {
 
           <View style={{ height: 20 }} />
 
-          <View ref={pendingAnchorRef} collapsable={false} style={{ height: 1 }} />
+          <View ref={pendingAnchorRef} style={styles.sectionAnchor} />
 
           {/* Pending Requests - Container hidden but content visible */}
           <View style={styles.pendingRequestsContainer}>
@@ -877,5 +979,4 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     borderColor: 'transparent',
   },
-
 });
