@@ -2,6 +2,56 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { getCurrentUser } from '@/lib/auth';
+import messaging from '@react-native-firebase/messaging';
+import PushNotification from 'react-native-push-notification';
+
+// 🔔 Setup Android notification channel
+PushNotification.createChannel(
+  {
+    channelId: 'srmnotification-trackmyleave-ID',
+    channelName: 'srm notification',
+    importance: 4, // High importance
+    soundName: 'notificationsound',
+    playSound: true,
+  },
+  (created) => console.log(`createChannel returned '${created}'`)
+);
+
+// 📩 Background FCM handler
+messaging().setBackgroundMessageHandler(async (remoteMessage) => {
+  console.log('📩 Background message:', remoteMessage);
+
+  if (remoteMessage.messageId){
+
+    // If payload is "data-only", show manually
+    PushNotification.localNotification({
+      channelId: 'srmnotification-trackmyleave-ID',
+      title: remoteMessage.notification?.title ?? 'Background Message',
+      message: remoteMessage.notification?.body ?? 'You got a new notification',
+      playSound: true,
+      soundName: 'notificationsound',
+    });
+  }
+});
+
+
+
+messaging().onMessage(async (remoteMessage) => {
+  console.log('📩 Background message:', remoteMessage);
+
+  if (remoteMessage.messageId){
+
+    // If payload is "data-only", show manually
+    PushNotification.localNotification({
+      channelId: 'srmnotification-trackmyleave-ID',
+      title: remoteMessage.notification?.title ?? 'Background Message',
+      message: remoteMessage.notification?.body ?? 'You got a new notification',
+      playSound: true,
+      soundName: 'notificationsound',
+    });
+  }
+});
+
 
 export default function IndexScreen() {
   const [isLoading, setIsLoading] = useState(true);

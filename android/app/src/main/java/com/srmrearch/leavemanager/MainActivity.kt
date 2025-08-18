@@ -1,7 +1,5 @@
 package com.srmrearch.leavemanager
 
-import expo.modules.splashscreen.SplashScreenManager
-
 import android.os.Build
 import android.os.Bundle
 
@@ -17,10 +15,7 @@ class MainActivity : ReactActivity() {
     // Set the theme to AppTheme BEFORE onCreate to support
     // coloring the background, status bar, and navigation bar.
     // This is required for expo-splash-screen.
-    // setTheme(R.style.AppTheme);
-    // @generated begin expo-splashscreen - expo prebuild (DO NOT MODIFY) sync-f3ff59a738c56c9a6119210cb55f0b613eb8b6af
-    SplashScreenManager.registerOnActivity(this)
-    // @generated end expo-splashscreen
+    setTheme(R.style.AppTheme);
     super.onCreate(null)
   }
 
@@ -37,7 +32,7 @@ class MainActivity : ReactActivity() {
   override fun createReactActivityDelegate(): ReactActivityDelegate {
     return ReactActivityDelegateWrapper(
           this,
-          com.srmrearch.leavemanager.BuildConfig.IS_NEW_ARCHITECTURE_ENABLED,
+          BuildConfig.IS_NEW_ARCHITECTURE_ENABLED,
           object : DefaultReactActivityDelegate(
               this,
               mainComponentName,

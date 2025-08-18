@@ -12,6 +12,7 @@
       "backgroundColor": "#ffffff"
     },
     "plugins": [
+      "@react-native-firebase/app",
       [
         "expo-local-authentication",
         {

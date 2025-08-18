@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from './firebase';
-import { sendNotificationToDirectors, sendPushNotificationToUser } from './notifications';
+import { sendNotificationToDirectors, sendPushNotificationToUser } from './notificationTokenManager';
 
 // Enhanced interface with better typing
 export interface LeaveRequest {
@@ -82,18 +82,7 @@ export const createLeaveRequest = async (
         // Send HIGH PRIORITY notification to all directors
         await sendNotificationToDirectors(
           requestData.isUrgent ? '🚨 URGENT: New Leave Request' : '📋 New Leave Request',
-          `${userName} from ${userDepartment} submitted a new ${requestData.requestType.toLowerCase()} request${requestData.isUrgent ? ' (URGENT)' : ''}`,
-          {
-            type: 'leave_request_created',
-            requestId: docRef.id,
-            userId: requestData.userId,
-            userName,
-            requestType: requestData.requestType,
-            department: userDepartment,
-            priority: requestData.priority,
-            isUrgent: requestData.isUrgent,
-          },
-          notificationPriority // HIGH or URGENT priority
+          `${userName} from ${userDepartment} submitted a new ${requestData.requestType.toLowerCase()} request${requestData.isUrgent ? ' (URGENT)' : ''}`
         );
       } catch (error) {
         console.error('Error sending notification:', error);
@@ -226,16 +215,7 @@ export const updateLeaveRequestStatus = async (
           await sendPushNotificationToUser(
             requestData.userId,
             notificationTitle,
-            notificationBody,
-            {
-              type: 'leave_request_updated',
-              requestId,
-              status,
-              requestType: requestData.requestType,
-              remark: remark || null,
-              approvedBy: approvedBy || null,
-            },
-            notificationPriority // HIGH or URGENT priority
+            notificationBody
           );
         }
       } catch (error) {

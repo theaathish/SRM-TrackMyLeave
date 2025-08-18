@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { Platform } from 'react-native';
+import {setupFCM, removeCurrentUserToken} from './notificationTokenManager';
 
 export interface User {
   id: string;
@@ -45,6 +46,8 @@ export const signIn = async (email: string, password: string): Promise<User> => 
     await updateDoc(doc(db, 'users', userCredential.user.uid), {
       lastLoginAt: serverTimestamp()
     });
+
+    setupFCM();
 
     return user;
   } catch (error: any) {
@@ -99,6 +102,7 @@ export const signOut = async (): Promise<void> => {
 
     // Clear any app state
     try {
+      await removeCurrentUserToken();
       const { appStateManager } = await import('./appStateManager');
       appStateManager.cleanup();
     } catch (error) {
