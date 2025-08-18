@@ -1,64 +1,104 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { getCurrentUser } from '@/lib/auth';
 import messaging from '@react-native-firebase/messaging';
-import PushNotification from 'react-native-push-notification';
+import * as Notifications from 'expo-notifications';
 
-// 🔔 Setup Android notification channel
-PushNotification.createChannel(
-  {
-    channelId: 'srmnotification-trackmyleave-ID',
-    channelName: 'srm notification',
-    importance: 4, // High importance
-    soundName: 'notificationsound',
-    playSound: true,
-  },
-  (created) => console.log(`createChannel returned '${created}'`)
-);
+// 🔔 Configure notification handler
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
-// 📩 Background FCM handler
+// 🔔 Setup notification channel for Android
+const setupNotificationChannel = async () => {
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('srmnotification-trackmyleave-ID', {
+      name: 'srm notification',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'notificationsound.wav', // Make sure this file exists in your assets
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#3B82F6',
+    });
+  }
+};
+
+// 🔩 Background FCM handler
 messaging().setBackgroundMessageHandler(async (remoteMessage) => {
-  console.log('📩 Background message:', remoteMessage);
+  console.log('🔩 Background message:', remoteMessage);
 
-  if (remoteMessage.messageId){
-
-    // If payload is "data-only", show manually
-    PushNotification.localNotification({
-      channelId: 'srmnotification-trackmyleave-ID',
-      title: remoteMessage.notification?.title ?? 'Background Message',
-      message: remoteMessage.notification?.body ?? 'You got a new notification',
-      playSound: true,
-      soundName: 'notificationsound',
+  if (remoteMessage.messageId) {
+    // Schedule notification using expo-notifications
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: remoteMessage.notification?.title ?? 'Background Message',
+        body: remoteMessage.notification?.body ?? 'You got a new notification',
+        sound: 'notificationsound.wav',
+        data: remoteMessage.data || {},
+      },
+      trigger: null, // Show immediately
     });
   }
 });
-
-
-
-messaging().onMessage(async (remoteMessage) => {
-  console.log('📩 Background message:', remoteMessage);
-
-  if (remoteMessage.messageId){
-
-    // If payload is "data-only", show manually
-    PushNotification.localNotification({
-      channelId: 'srmnotification-trackmyleave-ID',
-      title: remoteMessage.notification?.title ?? 'Background Message',
-      message: remoteMessage.notification?.body ?? 'You got a new notification',
-      playSound: true,
-      soundName: 'notificationsound',
-    });
-  }
-});
-
 
 export default function IndexScreen() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    initializeNotifications();
     checkAuthAndRedirect();
   }, []);
+
+  const initializeNotifications = async () => {
+    try {
+      // Setup notification channel
+      await setupNotificationChannel();
+
+      // Request permissions
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn('Notification permissions not granted');
+      }
+
+      // Handle foreground notifications
+      const foregroundSubscription = messaging().onMessage(async (remoteMessage) => {
+        console.log('🔩 Foreground message:', remoteMessage);
+
+        if (remoteMessage.messageId) {
+          // Show notification in foreground
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: remoteMessage.notification?.title ?? 'New Message',
+              body: remoteMessage.notification?.body ?? 'You got a new notification',
+              sound: 'notificationsound.wav',
+              data: remoteMessage.data || {},
+            },
+            trigger: null, // Show immediately
+          });
+        }
+      });
+
+      // Handle notification taps
+      const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+        console.log('Notification tapped:', response);
+        // Handle notification tap - navigate to specific screen if needed
+        // Example: router.push('/notifications');
+      });
+
+      // Cleanup subscriptions when component unmounts
+      return () => {
+        foregroundSubscription();
+        responseSubscription.remove();
+      };
+    } catch (error) {
+      console.error('Error initializing notifications:', error);
+    }
+  };
 
   const checkAuthAndRedirect = async () => {
     try {
@@ -70,12 +110,10 @@ export default function IndexScreen() {
         router.replace('/(tabs)/');
       } else {
         console.log('User not authenticated, redirecting to auth');
-        // FIX: Use consistent route path
         router.replace('/auth/');
       }
     } catch (error) {
       console.error('Error checking auth state:', error);
-      // FIX: On error, redirect to auth
       router.replace('/auth/');
     } finally {
       setIsLoading(false);

@@ -87,13 +87,13 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.srmrearch.leavemanager"
+    namespace 'com.srmrearch.leavemanager'
     defaultConfig {
-        applicationId "com.srmrearch.leavemanager"
+        applicationId 'com.srmrearch.leavemanager'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.6"
     }
     signingConfigs {
         debug {
@@ -150,15 +150,6 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
-    implementation(project(':react-native-push-notification')) {
-        exclude group: 'com.android.support'
-    }
-
-    configurations.all {
-    resolutionStrategy {
-        force 'androidx.core:core:1.13.1'
-    }
-}
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";

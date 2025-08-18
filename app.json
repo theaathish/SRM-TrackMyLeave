@@ -25,7 +25,7 @@
           "icon": "./assets/notification-icon.png",
           "color": "#3B82F6",
           "sounds": [
-            "./assets/notification-sound.wav"
+            "./assets/notificationsound.wav"
           ],
           "defaultChannel": "default"
         }
@@ -50,12 +50,6 @@
         "android.permission.VIBRATE"
       ],
       "package": "com.srmrearch.leavemanager"
-    },
-    "notification": {
-      "icon": "./assets/notification-icon.png",
-      "color": "#3B82F6",
-      "androidMode": "default",
-      "androidCollapsedTitle": "#{unread_notifications} new notifications"
     },
     "extra": {
       "eas": {
