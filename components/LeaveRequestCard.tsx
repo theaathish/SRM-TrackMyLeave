@@ -5,7 +5,7 @@ import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { StatusBadge } from './StatusBadge';
 import { Check, X, FileText, Calendar, User } from 'lucide-react-native';
-import { updateLeaveRequestStatus } from '@/lib/firestore';
+import { updateLeaveRequestStatus, fetchMatchingLeaves } from '@/lib/firestore';
 import { LeaveRequest } from '@/lib/firestore';
 import { getWorkingDaysBetween } from '@/lib/holidays';
 
@@ -24,6 +24,27 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
   const [loading, setLoading] = useState(false);
   const [workingDays, setWorkingDays] = useState<number | null>(null);
   const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
+  const [matchingLeavesCount, setMatchingLeavesCount] = useState(0);
+  
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        let data;
+        if (request.leaveType === "Casual") {
+          data = await fetchMatchingLeaves(request.userId, request.leaveType, request.leaveSubType);
+        } else {
+          data = await fetchMatchingLeaves(request.userId, request.leaveType);
+        }
+        setMatchingLeavesCount(data);
+      } catch (error) {
+        console.error("Error fetching leaves:", error);
+        setMatchingLeavesCount(0);
+      }
+    }
+
+    fetchData();
+  }, [request.userId, request.leaveType, request.leaveSubType]);
+
 
   useEffect(() => {
     if (request.requestType !== 'Permission' && request.toDate) {
@@ -223,7 +244,7 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
           {request.status === 'Pending' && request.previousCount !== undefined && (
             <View style={styles.leaveHistoryContainer}>
               <Text style={styles.leaveHistoryText}>
-                [{request.leaveTypeDisplay || 'Leave'}: {request.previousCount} taken before]
+                [{request.leaveTypeDisplay || 'Leave'}: {matchingLeavesCount} taken before]
               </Text>
             </View>
           )}

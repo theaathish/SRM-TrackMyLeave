@@ -1,5 +1,20 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Animated, TextInput } from 'react-native';
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+} from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  RefreshControl,
+  Animated,
+  TextInput,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -7,7 +22,17 @@ import { getCurrentUser } from '@/lib/auth';
 import { getLeaveRequests, LeaveRequest } from '@/lib/firestore';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Users, Calendar, Clock, ChevronRight, TrendingUp, UserCheck, Search, Filter, X } from 'lucide-react-native';
+import {
+  Users,
+  Calendar,
+  Clock,
+  ChevronRight,
+  TrendingUp,
+  UserCheck,
+  Search,
+  Filter,
+  X,
+} from 'lucide-react-native';
 
 interface StaffStats {
   userId: string;
@@ -30,12 +55,12 @@ export default function StaffScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const staffListAnchorRef = useRef<View>(null);
   const searchSectionRef = useRef<View>(null);
-  
+
   const [user, setUser] = useState<any>(null);
   const [staffStats, setStaffStats] = useState<StaffStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  
+
   // Search and filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
@@ -49,7 +74,7 @@ export default function StaffScreen() {
 
   useEffect(() => {
     loadData();
-    
+
     // Start animations
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -85,28 +110,28 @@ export default function StaffScreen() {
     try {
       const currentUser = await getCurrentUser();
       if (!currentUser) throw new Error('User not found');
-      
+
       if (currentUser.role !== 'Director') {
         router.replace('/(tabs)/');
         return;
       }
-      
+
       setUser(currentUser);
-      
+
       // Load all requests and calculate staff stats
       const allRequests = await getLeaveRequests();
-      
+
       // Get all staff users
       const usersSnapshot = await getDocs(
         query(collection(db, 'users'), where('role', '==', 'Staff'))
       );
-      
-      const stats = usersSnapshot.docs.map(doc => {
+
+      const stats = usersSnapshot.docs.map((doc) => {
         const userData = doc.data();
-        const userRequests = allRequests.filter(req => req.userId === doc.id);
-        
+        const userRequests = allRequests.filter((req) => req.userId === doc.id);
+
         let totalDaysApproved = 0;
-        userRequests.forEach(req => {
+        userRequests.forEach((req) => {
           if (req.status === 'Approved') {
             if (req.requestType === 'Permission') {
               totalDaysApproved += 0.5; // Permission counts as half day
@@ -119,24 +144,37 @@ export default function StaffScreen() {
             }
           }
         });
-        
+
         return {
           userId: doc.id,
           userName: userData.name,
           department: userData.department,
           employeeId: userData.employeeId,
           totalRequests: userRequests.length,
-          pendingRequests: userRequests.filter(req => req.status === 'Pending').length,
-          approvedRequests: userRequests.filter(req => req.status === 'Approved').length,
-          deniedRequests: userRequests.filter(req => req.status === 'Rejected').length,
+          pendingRequests: userRequests.filter(
+            (req) => req.status === 'Pending'
+          ).length,
+          approvedRequests: userRequests.filter(
+            (req) => req.status === 'Approved'
+          ).length,
+          deniedRequests: userRequests.filter(
+            (req) => req.status === 'Rejected'
+          ).length,
           totalDaysApproved,
-          leaveCount: userRequests.filter(req => req.requestType === 'Leave').length,
-          permissionCount: userRequests.filter(req => req.requestType === 'Permission').length,
-          onDutyCount: userRequests.filter(req => req.requestType === 'On Duty').length,
-          compensationCount: userRequests.filter(req => req.requestType === 'Compensation').length,
+          leaveCount: userRequests.filter((req) => req.requestType === 'Leave')
+            .length,
+          permissionCount: userRequests.filter(
+            (req) => req.requestType === 'Permission'
+          ).length,
+          onDutyCount: userRequests.filter(
+            (req) => req.requestType === 'On Duty'
+          ).length,
+          compensationCount: userRequests.filter(
+            (req) => req.requestType === 'Compensation'
+          ).length,
         } as StaffStats;
       });
-      
+
       setStaffStats(stats.sort((a, b) => b.totalRequests - a.totalRequests));
     } catch (error) {
       console.error('Error loading data:', error);
@@ -153,7 +191,9 @@ export default function StaffScreen() {
 
   // Get unique departments
   const departments = useMemo(() => {
-    const depts = [...new Set(staffStats.map(staff => staff.department))].filter(Boolean);
+    const depts = [
+      ...new Set(staffStats.map((staff) => staff.department)),
+    ].filter(Boolean);
     return depts.sort();
   }, [staffStats]);
 
@@ -163,14 +203,16 @@ export default function StaffScreen() {
 
     // Filter by search query (name)
     if (searchQuery.trim()) {
-      filtered = filtered.filter(staff =>
+      filtered = filtered.filter((staff) =>
         staff.userName.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
     // Filter by department
     if (selectedDepartment) {
-      filtered = filtered.filter(staff => staff.department === selectedDepartment);
+      filtered = filtered.filter(
+        (staff) => staff.department === selectedDepartment
+      );
     }
 
     return filtered;
@@ -179,10 +221,19 @@ export default function StaffScreen() {
   // Calculate overview stats based on ALL data (not filtered)
   const overviewStats = useMemo(() => {
     const totalStaff = staffStats.length;
-    const totalPendingRequests = staffStats.reduce((sum, staff) => sum + staff.pendingRequests, 0);
-    const totalDaysApproved = staffStats.reduce((sum, staff) => sum + staff.totalDaysApproved, 0);
-    const totalRequests = staffStats.reduce((sum, staff) => sum + staff.totalRequests, 0);
-    
+    const totalPendingRequests = staffStats.reduce(
+      (sum, staff) => sum + staff.pendingRequests,
+      0
+    );
+    const totalDaysApproved = staffStats.reduce(
+      (sum, staff) => sum + staff.totalDaysApproved,
+      0
+    );
+    const totalRequests = staffStats.reduce(
+      (sum, staff) => sum + staff.totalRequests,
+      0
+    );
+
     return {
       totalStaff,
       totalPendingRequests,
@@ -198,9 +249,9 @@ export default function StaffScreen() {
         staffListAnchorRef.current?.measureLayout(
           scrollViewRef.current as any,
           (x, y) => {
-            scrollViewRef.current?.scrollTo({ 
+            scrollViewRef.current?.scrollTo({
               y: y - 10, // Small offset from the top
-              animated: true 
+              animated: true,
             });
           },
           () => {} // Error callback
@@ -250,7 +301,7 @@ export default function StaffScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Animated.View 
+      <Animated.View
         style={[
           styles.animatedContainer,
           {
@@ -276,89 +327,6 @@ export default function StaffScreen() {
             </Text>
           </View>
 
-          {/* Stats Cards - All navigate to home page */}
-          <Animated.View 
-            style={[
-              styles.statsContainer,
-              { transform: [{ scale: statsScaleAnim }] },
-            ]}
-          >
-            {/* Total Staff - Navigate to Home */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={navigateToHome}
-              style={styles.statButton}
-            >
-              <Card style={[styles.statCard, styles.primaryCard]}>
-                <CardContent style={styles.statContent}>
-                  <Users size={24} color="#3B82F6" />
-                  <Text style={[styles.statNumber, styles.primaryNumber]}>
-                    {overviewStats.totalStaff}
-                  </Text>
-                  <Text style={styles.statLabel}>Total Faculty</Text>
-                </CardContent>
-              </Card>
-            </TouchableOpacity>
-
-            {/* Pending Requests - Navigate to Home */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={navigateToHome}
-              style={styles.statButton}
-            >
-              <Card style={[styles.statCard, styles.warningCard]}>
-                <CardContent style={styles.statContent}>
-                  <Clock size={24} color="#F59E0B" />
-                  <Text style={[styles.statNumber, styles.warningNumber]}>
-                    {overviewStats.totalPendingRequests}
-                  </Text>
-                  <Text style={styles.statLabel}>Pending</Text>
-                </CardContent>
-              </Card>
-            </TouchableOpacity>
-          </Animated.View>
-
-          <Animated.View 
-            style={[
-              styles.statsContainer,
-              { transform: [{ scale: statsScaleAnim }] },
-            ]}
-          >
-            {/* Days Approved - Navigate to Home */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={navigateToHome}
-              style={styles.statButton}
-            >
-              <Card style={[styles.statCard, styles.successCard]}>
-                <CardContent style={styles.statContent}>
-                  <Calendar size={24} color="#10B981" />
-                  <Text style={[styles.statNumber, styles.successNumber]}>
-                    {overviewStats.totalDaysApproved}
-                  </Text>
-                  <Text style={styles.statLabel}>Days Approved</Text>
-                </CardContent>
-              </Card>
-            </TouchableOpacity>
-
-            {/* Total Requests - Navigate to Home */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={navigateToHome}
-              style={styles.statButton}
-            >
-              <Card style={[styles.statCard, styles.infoCard]}>
-                <CardContent style={styles.statContent}>
-                  <TrendingUp size={24} color="#8B5CF6" />
-                  <Text style={[styles.statNumber, styles.infoNumber]}>
-                    {overviewStats.totalRequests}
-                  </Text>
-                  <Text style={styles.statLabel}>Total Requests</Text>
-                </CardContent>
-              </Card>
-            </TouchableOpacity>
-          </Animated.View>
-
           {/* Search and Filter Section - MOVED HERE AFTER STATS */}
           <View ref={searchSectionRef} style={styles.searchContainer}>
             {/* Search Input */}
@@ -372,7 +340,10 @@ export default function StaffScreen() {
                 placeholderTextColor="#9CA3AF"
               />
               {searchQuery ? (
-                <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+                <TouchableOpacity
+                  onPress={() => setSearchQuery('')}
+                  style={styles.clearButton}
+                >
                   <X size={16} color="#6B7280" />
                 </TouchableOpacity>
               ) : null}
@@ -381,17 +352,28 @@ export default function StaffScreen() {
             {/* Filter Controls */}
             <View style={styles.filterControls}>
               <TouchableOpacity
-                style={[styles.filterButton, showDepartmentFilter && styles.filterButtonActive]}
+                style={[
+                  styles.filterButton,
+                  showDepartmentFilter && styles.filterButtonActive,
+                ]}
                 onPress={toggleDepartmentFilter}
                 activeOpacity={0.7}
               >
-                <Filter size={16} color={showDepartmentFilter ? "#3B82F6" : "#6B7280"} />
-                <Text style={[styles.filterButtonText, showDepartmentFilter && styles.filterButtonTextActive]}>
+                <Filter
+                  size={16}
+                  color={showDepartmentFilter ? '#3B82F6' : '#6B7280'}
+                />
+                <Text
+                  style={[
+                    styles.filterButtonText,
+                    showDepartmentFilter && styles.filterButtonTextActive,
+                  ]}
+                >
                   Department
                 </Text>
               </TouchableOpacity>
 
-              {(searchQuery || selectedDepartment) ? (
+              {searchQuery || selectedDepartment ? (
                 <TouchableOpacity
                   style={styles.clearFiltersButton}
                   onPress={clearFilters}
@@ -406,28 +388,47 @@ export default function StaffScreen() {
             <Animated.View
               style={[
                 styles.departmentFilter,
-                { transform: [{ translateY: filterSlideAnim }] }
+                { transform: [{ translateY: filterSlideAnim }] },
               ]}
             >
               {showDepartmentFilter && (
                 <View style={styles.departmentOptions}>
                   <TouchableOpacity
-                    style={[styles.departmentOption, !selectedDepartment && styles.departmentOptionActive]}
+                    style={[
+                      styles.departmentOption,
+                      !selectedDepartment && styles.departmentOptionActive,
+                    ]}
                     onPress={() => handleDepartmentSelect('')}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.departmentOptionText, !selectedDepartment && styles.departmentOptionTextActive]}>
+                    <Text
+                      style={[
+                        styles.departmentOptionText,
+                        !selectedDepartment &&
+                          styles.departmentOptionTextActive,
+                      ]}
+                    >
                       All Departments
                     </Text>
                   </TouchableOpacity>
-                  {departments.map(dept => (
+                  {departments.map((dept) => (
                     <TouchableOpacity
                       key={dept}
-                      style={[styles.departmentOption, selectedDepartment === dept && styles.departmentOptionActive]}
+                      style={[
+                        styles.departmentOption,
+                        selectedDepartment === dept &&
+                          styles.departmentOptionActive,
+                      ]}
                       onPress={() => handleDepartmentSelect(dept)}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.departmentOptionText, selectedDepartment === dept && styles.departmentOptionTextActive]}>
+                      <Text
+                        style={[
+                          styles.departmentOptionText,
+                          selectedDepartment === dept &&
+                            styles.departmentOptionTextActive,
+                        ]}
+                      >
                         {dept}
                       </Text>
                     </TouchableOpacity>
@@ -443,12 +444,16 @@ export default function StaffScreen() {
               <Text style={styles.activeFiltersLabel}>Active Filters:</Text>
               {searchQuery && (
                 <View style={styles.filterTag}>
-                  <Text style={styles.filterTagText}>Name: "{searchQuery}"</Text>
+                  <Text style={styles.filterTagText}>
+                    Name: "{searchQuery}"
+                  </Text>
                 </View>
               )}
               {selectedDepartment && (
                 <View style={styles.filterTag}>
-                  <Text style={styles.filterTagText}>Dept: {selectedDepartment}</Text>
+                  <Text style={styles.filterTagText}>
+                    Dept: {selectedDepartment}
+                  </Text>
                 </View>
               )}
             </View>
@@ -472,15 +477,20 @@ export default function StaffScreen() {
                 <Text style={styles.noResultsText}>
                   No faculty members found matching your criteria.
                 </Text>
-                <TouchableOpacity onPress={clearFilters} style={styles.clearFiltersInlineButton}>
-                  <Text style={styles.clearFiltersInlineText}>Clear Filters</Text>
+                <TouchableOpacity
+                  onPress={clearFilters}
+                  style={styles.clearFiltersInlineButton}
+                >
+                  <Text style={styles.clearFiltersInlineText}>
+                    Clear Filters
+                  </Text>
                 </TouchableOpacity>
               </CardContent>
             </Card>
           )}
 
           {/* Faculty List */}
-          {filteredStaff.map(staff => (
+          {filteredStaff.map((staff) => (
             <TouchableOpacity
               key={staff.userId}
               onPress={() => router.push(`/staff/${staff.userId}`)}
@@ -513,7 +523,9 @@ export default function StaffScreen() {
                         <Text style={styles.statItemLabel}>Days Approved</Text>
                       </View>
                       <View style={styles.statItem}>
-                        <Text style={styles.statItemNumber}>{staff.totalRequests}</Text>
+                        <Text style={styles.statItemNumber}>
+                          {staff.totalRequests}
+                        </Text>
                         <Text style={styles.statItemLabel}>Total Requests</Text>
                       </View>
                     </View>
@@ -564,7 +576,7 @@ const styles = StyleSheet.create({
   },
   // Search and Filter Styles
   searchContainer: {
-    marginBottom: 24,
+    marginBottom: 12,
   },
   searchInputContainer: {
     flexDirection: 'row',
@@ -772,7 +784,7 @@ const styles = StyleSheet.create({
   },
   sectionAnchor: {
     height: 1,
-    marginTop: 24,
+    marginTop: 8,
   },
   sectionHeader: {
     flexDirection: 'row',

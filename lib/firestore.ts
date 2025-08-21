@@ -234,6 +234,38 @@ export const updateLeaveRequestStatus = async (
   }
 };
 
+
+export async function fetchMatchingLeaves(userId: string, leaveType: string, leaveSubType?: string) {
+  const leavesRef = collection(db, "leaveRequests");
+
+  // Basic query: userId, leaveType, and status = Approved
+  let q = query(
+    leavesRef,
+    where("userId", "==", userId),
+    where("leaveType", "==", leaveType),
+    where("status", "==", "Approved")
+  );
+
+  // If it's Casual leave and leaveSubType is provided, add that filter too
+  if (leaveType === "Casual" && leaveSubType) {
+    q = query(
+      leavesRef,
+      where("userId", "==", userId),
+      where("leaveType", "==", leaveType),
+      where("leaveSubType", "==", leaveSubType),
+      where("status", "==", "Approved")
+    );
+  }
+
+  try {
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => doc.data()).length;
+  } catch (error) {
+    console.error("Error querying leaves:", error);
+    throw error;
+  }
+}
+
 // Export constants
 export const LEAVE_REQUEST_CONSTANTS = {
   MAX_FILE_SIZE: 5 * 1024 * 1024, // 5MB

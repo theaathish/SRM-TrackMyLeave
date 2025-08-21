@@ -392,13 +392,15 @@ export default function SubmitLeaveScreen() {
       // Create request data
       const requestData: any = {
         userId: user.id,
-        empId: formData.empId,
+        empId: user.employeeId,
         department: formData.department,
         requestType: formData.leaveType,
         leaveType: formData.leaveType,
         reason: formData.reason,
         duration: formData.calculatedDuration,
       };
+
+      console.log(requestData);
 
       // Add conditional fields based on leave type
       if (formData.leaveType === 'Compensation') {
@@ -526,11 +528,12 @@ export default function SubmitLeaveScreen() {
               </CardHeader>
               <CardContent style={styles.form}>
                 <Input
-                  label="Employee ID"
-                  value={formData.empId}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, empId: text }))}
-                  placeholder="Enter Employee ID"
+                  label="Name"
+                  value={user.name}
+                  editable={false}
+                  placeholder="Employee Name"
                   containerStyle={styles.input}
+                  style={styles.readOnlyInput}
                 />
 
                 <Input
