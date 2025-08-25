@@ -163,7 +163,7 @@ export default function AuthScreen() {
         router.replace('/(tabs)/');
       } else {
         // Signup flow
-        const user = await signUp(formData.email.trim().toLowerCase(), formData.password, formData.name.trim());
+        const user = await signUp(formData.email.trim().toLowerCase(), formData.password, formData.name.trim(), formData.department.trim(), formData.employeeId.trim());
         console.log('Signup successful:', user);
         
         Alert.alert(

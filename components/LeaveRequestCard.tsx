@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Alert, StyleSheet } from 'react-native';
+import { View, Text, Alert, StyleSheet, TouchableOpacity } from 'react-native';
 import { Card, CardContent, CardFooter } from './ui/Card';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { StatusBadge } from './StatusBadge';
-import { Check, X, FileText, Calendar, User } from 'lucide-react-native';
+import { Check, X, FileText, Calendar, User, ChevronRight } from 'lucide-react-native';
 import { updateLeaveRequestStatus, fetchMatchingLeaves } from '@/lib/firestore';
 import { LeaveRequest } from '@/lib/firestore';
 import { getWorkingDaysBetween } from '@/lib/holidays';
+import { useRouter } from 'expo-router';
 
 interface LeaveRequestCardProps {
   request: LeaveRequest & {
@@ -21,6 +22,7 @@ interface LeaveRequestCardProps {
 }
 
 function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimisticUpdate }: LeaveRequestCardProps) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [workingDays, setWorkingDays] = useState<number | null>(null);
   const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
@@ -45,7 +47,6 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
     fetchData();
   }, [request.userId, request.leaveType, request.leaveSubType]);
 
-
   useEffect(() => {
     if (request.requestType !== 'Permission' && request.toDate) {
       calculateWorkingDays();
@@ -59,6 +60,13 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
     } catch (error) {
       console.error('Error calculating working days:', error);
       setWorkingDays(null);
+    }
+  };
+
+  // Navigate to staff detail page
+  const navigateToStaffDetail = () => {
+    if (request.userId && isDirector) {
+      router.push(`/staff/${request.userId}`);
     }
   };
 
@@ -210,12 +218,20 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
           <View style={styles.header}>
             <View style={styles.headerLeft}>
               {isDirector && (
-                <View style={styles.userInfo}>
-                  <User size={16} color="#6B7280" />
-                  <Text style={styles.userName}>
-                    {request.userName}
-                  </Text>
-                </View>
+                <TouchableOpacity 
+                  style={styles.userInfoClickable}
+                  onPress={navigateToStaffDetail}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.userInfo}>
+                    <User size={16} color="#3B82F6" />
+                    <Text style={styles.userName}>
+                      {request.userName}
+                    </Text>
+                    <ChevronRight size={16} color="#3B82F6" style={styles.chevronIcon} />
+                  </View>
+                  <Text style={styles.viewDetailsText}>Tap to view all requests</Text>
+                </TouchableOpacity>
               )}
               <Text style={styles.department}>
                 {request.department} • ID: {request.empId}
@@ -345,21 +361,42 @@ const styles = StyleSheet.create({
   headerLeft: {
     flex: 1,
   },
+  // New clickable user info styles
+  userInfoClickable: {
+    marginBottom: 4,
+    borderRadius: 8,
+    padding: 8,
+    marginLeft: -8,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   userName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
+    color: '#3B82F6',
     marginLeft: 6,
+    marginRight: 4,
+  },
+  chevronIcon: {
+    marginLeft: 'auto',
+  },
+  viewDetailsText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginLeft: 22,
+    fontStyle: 'italic',
   },
   department: {
     fontSize: 14,
     color: '#6B7280',
     fontWeight: '500',
+    marginLeft: 8,
   },
   leaveTypeContainer: {
     flexDirection: 'row',
@@ -520,10 +557,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 6,
-    // Gradient effect using border
     borderWidth: 1,
     borderColor: '#047857',
-    // Add subtle inner highlight
     position: 'relative',
   },
   denyButton: {
@@ -536,10 +571,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 6,
-    // Gradient effect using border
     borderWidth: 1,
     borderColor: '#B91C1C',
-    // Add subtle inner highlight
     position: 'relative',
   },
 });
