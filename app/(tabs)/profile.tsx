@@ -346,6 +346,7 @@ export default function ProfileScreen() {
                     onPress={() => setIsEditing(true)}
                     icon={<Edit size={16} color="#FFFFFF" />}
                     style={styles.editButton}
+                    title=""
                   />
                 )}
               </View>
@@ -495,9 +496,8 @@ export default function ProfileScreen() {
                 onPress={handleOpenPasswordModal}
                 icon={<Key size={16} color="#FFFFFF" />}
                 style={styles.pinButton}
-              >
-                Change Password
-              </Button>
+                title="Change Password"
+              />
 
               <View style={styles.securityNoteContainer}>
                 <MaterialIcons name="info" size={16} color="#065F46" />
@@ -515,25 +515,22 @@ export default function ProfileScreen() {
                 onPress={handleCancelEdit}
                 variant="outline"
                 icon={<X size={16} color="#6B7280" />}
-              >
-                Cancel
-              </Button>
+                title="Cancel"
+              />
               <Button
                 onPress={handleSaveProfile}
                 loading={saving}
                 icon={<Save size={16} color="#FFFFFF" />}
-              >
-                Save Changes
-              </Button>
+                title="Save Changes"
+              />
             </View>
           ) : (
             <Button
               onPress={handleSignOut}
               variant="danger"
               icon={<LogOut size={16} color="#FFFFFF" />}
-            >
-              Sign Out
-            </Button>
+              title="Sign Out"
+            />
           )}
         </View>
       </ScrollView>

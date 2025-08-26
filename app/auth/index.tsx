@@ -103,6 +103,11 @@ export default function AuthScreen() {
       return false;
     }
 
+    if (!(formData.email.includes("srmist.edu.in") || formData.email.includes("eec.srmrmp.edu.in") || formData.email.includes("trp.srmtrichy.edu.in"))){
+      Alert.alert('Error', 'please use institutional mail');
+      return false;
+    }
+
     if (!validateEmail(formData.email)) {
       Alert.alert('Error', 'Please enter a valid email address');
       return false;

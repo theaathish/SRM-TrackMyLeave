@@ -10,6 +10,11 @@
         "gradleCommand": ":app:assembleDebug"
       }
     },
+    "local": {
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
     "alpha": {
       "distribution": "internal",
       "android": {
