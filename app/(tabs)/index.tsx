@@ -7,7 +7,7 @@ import { LeaveRequestCard as LeaveRequestCardBase } from '@/components/LeaveRequ
 const LeaveRequestCard = React.memo(LeaveRequestCardBase);
 import { getCurrentUser } from '@/lib/auth';
 import { getLeaveRequests, LeaveRequest } from '@/lib/firestore';
-import { FileText, Users, Calendar, Clock, TrendingUp } from 'lucide-react-native';
+import { FileText, Users, Calendar, Clock, TrendingUp, ChevronUp } from 'lucide-react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, router } from 'expo-router';
 
@@ -27,6 +27,7 @@ export default function HomeScreen() {
   const pendingAnchorRef = useRef<View>(null);
   const approvedHeaderRef = useRef<View>(null);
   const deniedHeaderRef = useRef<View>(null);
+  const allRequestsRef = useRef<View>(null); // New ref for "My Requests" section
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -34,6 +35,8 @@ export default function HomeScreen() {
     approved: false,
     denied: false,
   });
+  const [sectionLoading, setSectionLoading] = useState<{ [key: string]: boolean }>({});
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
 
   // Animation values for enhanced view
   const [fadeAnim] = useState(new Animated.Value(0));
@@ -189,15 +192,38 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [user, refreshing, loadRequests]);
 
-  // Fixed scroll to section function with manual position calculation
-  const scrollToSection = useCallback((section: 'pending' | 'approved' | 'denied') => {
+  // Scroll handler for scroll to top button
+  const handleScroll = useCallback((event: any) => {
+    const scrollY = event.nativeEvent.contentOffset.y;
+    // Show button when scrolled down more than 300px
+    setShowScrollToTop(scrollY > 300);
+  }, []);
+
+  // Scroll to top function
+  const scrollToTop = useCallback(() => {
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: true });
+      
+      // Optional: Add haptic feedback
+      try {
+        import('expo-haptics').then(({ impactAsync, ImpactFeedbackStyle }) => {
+          impactAsync(ImpactFeedbackStyle.Light);
+        });
+      } catch (error) {
+        // Haptics not available
+      }
+    }
+  }, []);
+
+  // Fixed scroll to section function with better calculations for staff view
+  const scrollToSection = useCallback((section: 'pending' | 'approved' | 'denied' | 'all-requests') => {
     if (!scrollViewRef.current) return;
 
     // Calculate approximate positions based on content structure
     let scrollY = 0;
     
     if (user?.role === 'Director') {
-      // Director view calculations
+      // Director view calculations (unchanged)
       const headerHeight = 100;
       const statsHeight = 200; // Two rows of stats
       const sectionMargin = 50;
@@ -214,38 +240,48 @@ export default function HomeScreen() {
           break;
       }
     } else {
-      // Staff view calculations
-      const headerHeight = 120;
-      const statsHeight = 100;
-      const sectionMargin = 40;
+      // Staff view calculations - FIXED
+      const headerHeight = 120; // Welcome text + role
+      const statsHeight = 120; // Stats cards height
+      const spacingAfterStats = 20; // Space after stats
+      const pendingSectionHeight = 300; // Estimated pending section height
+      const sectionHeaderHeight = 60; // Each section header height
+      const sectionSpacing = 24; // Margin between sections
       
       switch (section) {
+        case 'all-requests':
         case 'pending':
-          scrollY = headerHeight + statsHeight + sectionMargin;
+          // Scroll to start of pending requests (right after stats)
+          scrollY = headerHeight + statsHeight + spacingAfterStats;
           break;
         case 'approved':
-          scrollY = headerHeight + statsHeight + sectionMargin + 400; // After pending
+          // Scroll to approved section (after pending section)
+          scrollY = headerHeight + statsHeight + spacingAfterStats + 
+                   pendingSectionHeight + sectionSpacing;
           break;
         case 'denied':
-          scrollY = headerHeight + statsHeight + sectionMargin + 800; // After pending + approved
+          // Scroll to denied section (after approved section)
+          scrollY = headerHeight + statsHeight + spacingAfterStats + 
+                   pendingSectionHeight + sectionHeaderHeight + sectionSpacing * 2 + 200;
           break;
       }
     }
 
     console.log(`Scrolling to ${section} at position ${scrollY}`);
     scrollViewRef.current.scrollTo({ 
-      y: scrollY, 
+      y: Math.max(0, scrollY), 
       animated: true 
     });
   }, [user?.role]);
 
   // Alternative method using refs with better measurement
-  const scrollToSectionWithRef = useCallback((section: 'pending' | 'approved' | 'denied') => {
+  const scrollToSectionWithRef = useCallback((section: 'pending' | 'approved' | 'denied' | 'all-requests') => {
     if (!scrollViewRef.current) return;
 
     let targetRef: React.RefObject<View> | null = null;
     
     switch (section) {
+      case 'all-requests':
       case 'pending':
         targetRef = pendingAnchorRef;
         break;
@@ -263,24 +299,24 @@ export default function HomeScreen() {
       return;
     }
 
-    // First try measureLayout with the scroll view as parent
-    targetRef.current.measureLayout(
-      scrollViewRef.current as any,
-      (x, y, width, height) => {
-        console.log(`Measured position for ${section}: y=${y}`);
-        if (scrollViewRef.current) {
-          scrollViewRef.current.scrollTo({ 
-            y: Math.max(0, y - 80), // 80px offset from top
-            animated: true 
-          });
-        }
-      },
-      (error) => {
-        console.warn('measureLayout failed, using manual calculation:', error);
-        scrollToSection(section);
+    // Measure the target element position
+    targetRef.current.measure((x, y, width, height, pageX, pageY) => {
+      console.log(`Measured position for ${section}: pageY=${pageY}`);
+      
+      if (scrollViewRef.current) {
+        // Scroll to the measured position with some offset
+        const baseOffset = user?.role === 'Staff' ? 60 : 80;
+        // Add extra 75px DOWNWARD (subtract from offset to scroll down more) for "My Requests" navigation
+        const extraOffset = section === 'approved' ? -75 : 0;
+        const totalOffset = baseOffset + extraOffset;
+        
+        scrollViewRef.current.scrollTo({ 
+          y: Math.max(0, pageY - totalOffset), 
+          animated: true 
+        });
       }
-    );
-  }, [scrollToSection]);
+    });
+  }, [scrollToSection, user?.role]);
 
   // Remove real-time useEffect, keep only simple focus effect
   useFocusEffect(
@@ -302,22 +338,33 @@ export default function HomeScreen() {
     );
   }, []);
 
-  // Enhanced navigation handlers with better scrolling
-  const handleNavigateToSection = useCallback((section: 'pending' | 'approved' | 'denied') => {
+  // Enhanced navigation handlers with instant show/hide (no loading states needed)
+  const handleNavigateToSection = useCallback((section: 'pending' | 'approved' | 'denied' | 'all-requests') => {
     console.log(`Navigating to ${section} section`);
     
-    // First expand the section if needed
-    if (section === 'approved' || section === 'denied') {
+    // Handle different section types - instant expansion, no loading needed
+    if (section === 'all-requests') {
+      // For "My Requests", expand both approved and denied sections to show ALL requests
+      setExpanded(prev => ({ ...prev, approved: true, denied: true }));
+      
+      // Scroll immediately after state update
+      setTimeout(() => {
+        scrollToSectionWithRef('approved'); // Scroll to approved requests (center of all requests)
+      }, 100); // Minimal delay for state update
+    } else if (section === 'approved' || section === 'denied') {
+      // For specific sections, just expand that section
       setExpanded(prev => ({ ...prev, [section]: true }));
+      
+      // Scroll immediately after state update
+      setTimeout(() => {
+        scrollToSectionWithRef(section);
+      }, 100); // Minimal delay for state update
+    } else {
+      // For pending section, no expansion needed
+      setTimeout(() => {
+        scrollToSectionWithRef(section);
+      }, 50);
     }
-
-    // Use a longer delay for expandable sections to ensure content is rendered
-    const delay = section === 'pending' ? 100 : 400;
-    
-    setTimeout(() => {
-      // Try the ref-based method first, fallback to manual calculation
-      scrollToSectionWithRef(section);
-    }, delay);
   }, [scrollToSectionWithRef]);
 
   // Simple refresh control
@@ -361,6 +408,8 @@ export default function HomeScreen() {
             contentContainerStyle={styles.content}
             refreshControl={refreshControl}
             showsVerticalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
           >
             <View ref={containerRef} style={{ flex: 1 }}>
               {/* Enhanced Header for Director */}
@@ -376,10 +425,10 @@ export default function HomeScreen() {
                   { transform: [{ scale: statsScaleAnim }] },
                 ]}
               >
-                {/* Total Requests - Navigate to Approved */}
+                {/* Total Requests - Navigate to ALL requests (both approved and denied) */}
                 <TouchableOpacity
                   activeOpacity={0.8}
-                  onPress={() => handleNavigateToSection('approved')}
+                  onPress={() => handleNavigateToSection('all-requests')}
                   style={styles.directorStatButton}
                 >
                   <Card style={[styles.directorStatCard, styles.primaryCard]}>
@@ -500,7 +549,11 @@ export default function HomeScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {expanded.approved && (
+              {/* Pre-rendered Approved Requests - Always rendered but conditionally visible */}
+              <View style={[
+                styles.preRenderedSection,
+                { display: expanded.approved ? 'flex' : 'none' }
+              ]}>
                 <FlatList
                   data={approvedRequests}
                   keyExtractor={item => item.id}
@@ -520,7 +573,7 @@ export default function HomeScreen() {
                     </View>
                   }
                 />
-              )}
+              </View>
 
               {/* Denied Requests Section */}
               <View ref={deniedHeaderRef} style={styles.sectionAnchor} />
@@ -539,7 +592,11 @@ export default function HomeScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {expanded.denied && (
+              {/* Pre-rendered Denied Requests - Always rendered but conditionally visible */}
+              <View style={[
+                styles.preRenderedSection,
+                { display: expanded.denied ? 'flex' : 'none' }
+              ]}>
                 <FlatList
                   data={deniedRequests}
                   keyExtractor={item => item.id}
@@ -559,10 +616,23 @@ export default function HomeScreen() {
                     </View>
                   }
                 />
-              )}
+              </View>
             </View>
           </ScrollView>
         </Animated.View>
+        
+        {/* Scroll to Top Button */}
+        {showScrollToTop && (
+          <TouchableOpacity
+            style={styles.scrollToTopButton}
+            onPress={scrollToTop}
+            activeOpacity={0.8}
+          >
+            <View style={styles.scrollToTopContent}>
+              <ChevronUp size={24} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
+        )}
       </SafeAreaView>
     );
   }
@@ -577,6 +647,8 @@ export default function HomeScreen() {
         refreshControl={refreshControl}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       >
         <View ref={containerRef} style={styles.content}>
           {/* Header */}
@@ -585,13 +657,11 @@ export default function HomeScreen() {
             <Text style={styles.roleText}>{user?.department} • Faculty</Text>
           </View>
 
-          <View ref={approvedHeaderRef} style={styles.sectionAnchor} />
-
           {/* Stats as navigation buttons */}
           <View style={styles.statsContainer}>
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => handleNavigateToSection('approved')}
+              onPress={() => handleNavigateToSection('all-requests')} // Changed from 'approved' to 'all-requests'
               style={styles.statButton}
             >
               <Card style={styles.statCard}>
@@ -620,6 +690,7 @@ export default function HomeScreen() {
 
           <View style={{ height: 20 }} />
 
+          {/* Anchor for "My Requests" / Pending section */}
           <View ref={pendingAnchorRef} style={styles.sectionAnchor} />
 
           {/* Pending Requests - Container hidden but content visible */}
@@ -647,7 +718,9 @@ export default function HomeScreen() {
             />
           </View>
 
-          {/* Approved Requests - outside the pending container */}
+          {/* Approved Requests - anchor placed right before the header */}
+          <View ref={approvedHeaderRef} style={styles.sectionAnchor} />
+
           <TouchableOpacity
             style={styles.sectionHeader}
             onPress={() => setExpanded(e => ({ ...e, approved: !e.approved }))}
@@ -659,7 +732,11 @@ export default function HomeScreen() {
             <Text style={styles.sectionToggle}>{expanded.approved ? '▲' : '▼'}</Text>
           </TouchableOpacity>
 
-          {expanded.approved && (
+          {/* Pre-rendered Approved Requests - Always rendered but conditionally visible */}
+          <View style={[
+            styles.preRenderedSection,
+            { display: expanded.approved ? 'flex' : 'none' }
+          ]}>
             <FlatList
               data={approvedRequests}
               keyExtractor={item => item.id}
@@ -679,9 +756,11 @@ export default function HomeScreen() {
                 </View>
               }
             />
-          )}
+          </View>
 
-          {/* Denied Requests - outside the pending container */}
+          {/* Denied Requests - anchor placed right before the header */}
+          <View ref={deniedHeaderRef} style={styles.sectionAnchor} />
+
           <TouchableOpacity
             style={styles.sectionHeader}
             onPress={() => setExpanded(e => ({ ...e, denied: !e.denied }))}
@@ -693,7 +772,11 @@ export default function HomeScreen() {
             <Text style={styles.sectionToggle}>{expanded.denied ? '▲' : '▼'}</Text>
           </TouchableOpacity>
 
-          {expanded.denied && (
+          {/* Pre-rendered Denied Requests - Always rendered but conditionally visible */}
+          <View style={[
+            styles.preRenderedSection,
+            { display: expanded.denied ? 'flex' : 'none' }
+          ]}>
             <FlatList
               data={deniedRequests}
               keyExtractor={item => item.id}
@@ -713,9 +796,22 @@ export default function HomeScreen() {
                 </View>
               }
             />
-          )}
+          </View>
         </View>
       </ScrollView>
+      
+      {/* Scroll to Top Button */}
+      {showScrollToTop && (
+        <TouchableOpacity
+          style={styles.scrollToTopButton}
+          onPress={scrollToTop}
+          activeOpacity={0.8}
+        >
+          <View style={styles.scrollToTopContent}>
+            <ChevronUp size={24} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
@@ -978,5 +1074,32 @@ const styles = StyleSheet.create({
     elevation: 0,
     borderWidth: 0,
     borderColor: 'transparent',
+  },
+  // Pre-rendered section styling
+  preRenderedSection: {
+    // Section is always rendered but visibility controlled by display property
+    flex: 1,
+  },
+  // Scroll to top button styles
+  scrollToTopButton: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#3B82F6',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    zIndex: 1000,
+  },
+  scrollToTopContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 28,
   },
 });

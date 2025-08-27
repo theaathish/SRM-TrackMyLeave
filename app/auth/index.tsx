@@ -103,7 +103,7 @@ export default function AuthScreen() {
       return false;
     }
 
-    if (!(formData.email.includes("srmist.edu.in") || formData.email.includes("eec.srmrmp.edu.in") || formData.email.includes("trp.srmtrichy.edu.in"))){
+    if (!(formData.email.includes("srmrmp.edu.in") || formData.email.includes("srmist.edu.in") || formData.email.includes("eec.srmrmp.edu.in") || formData.email.includes("trp.srmtrichy.edu.in"))){
       Alert.alert('Error', 'please use institutional mail');
       return false;
     }
