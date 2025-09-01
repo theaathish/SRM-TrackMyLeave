@@ -9,7 +9,7 @@ import { DatePicker } from '@/components/ui/DatePicker';
 import { TimePicker } from '@/components/ui/TimePicker';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { getCurrentUser, updateUserEmployeeId } from '@/lib/auth';
-import { createLeaveRequest } from '@/lib/firestore';
+import { createLeaveRequest, getLeaveRequests, LeaveRequest } from '@/lib/firestore';
 import { Send, Clock, Calendar, User } from 'lucide-react-native';
 import { getWorkingDaysBetween, initializeHolidays } from '@/lib/holidays';
 
@@ -26,36 +26,24 @@ const leaveSubTypes = [
   { label: 'Emergency Leave', value: 'Emergency' },
 ];
 
-const leaveDurationOptions = [
-  { label: 'Single Day', value: 'single' },
-  { label: 'Multiple Days', value: 'multiple' },
-];
-
-const departmentOptions = [
-  { label: 'Human Resources', value: 'HR' },
-  { label: 'Information Technology', value: 'IT' },
-  { label: 'Finance', value: 'Finance' },
-  { label: 'Marketing', value: 'Marketing' },
-  { label: 'Operations', value: 'Operations' },
-  { label: 'Sales', value: 'Sales' },
-];
-
 export default function SubmitLeaveScreen() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(false);
+  const [userLeaveRequests, setUserLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [loadingUserRequests, setLoadingUserRequests] = useState(true);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
   const [formData, setFormData] = useState({
     empId: '',
     department: '',
     leaveType: 'Leave',
-    leaveSubType: 'Casual', // Change default to Casual
+    leaveSubType: 'Casual',
     leaveDuration: 'single',
     fromDate: null as Date | null,
     toDate: null as Date | null,
-    workedDate: null as Date | null, // For compensation leave
-    leaveDate: null as Date | null,  // For compensation leave
+    workedDate: null as Date | null,
+    leaveDate: null as Date | null,
     fromTime: '',
     toTime: '',
     reason: '',
@@ -64,7 +52,6 @@ export default function SubmitLeaveScreen() {
 
   useEffect(() => {
     loadUserData();
-    // Initialize Tamil Nadu holidays on app load
     initializeHolidays();
     // Animate in the form
     Animated.parallel([
@@ -76,7 +63,6 @@ export default function SubmitLeaveScreen() {
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 800,
-
         useNativeDriver: true,
       }),
     ]).start();
@@ -90,8 +76,11 @@ export default function SubmitLeaveScreen() {
         setFormData(prev => ({
           ...prev,
           department: currentUser.department,
-          empId: currentUser.employeeId || '' // Leave empty if no employee ID, let user enter it
+          empId: currentUser.employeeId || ''
         }));
+        
+        // Load user's existing leave requests for date conflict checking
+        await loadUserLeaveRequests(currentUser.id);
       } else {
         router.replace('/auth');
       }
@@ -100,6 +89,82 @@ export default function SubmitLeaveScreen() {
       router.replace('/auth');
     }
   };
+
+  const loadUserLeaveRequests = async (userId: string) => {
+    try {
+      setLoadingUserRequests(true);
+      const requests = await getLeaveRequests(userId);
+      // Filter for approved and pending requests only
+      const activeRequests = requests.filter(req => 
+        req.status === 'Approved' || req.status === 'Pending'
+      );
+      setUserLeaveRequests(activeRequests);
+      console.log('Loaded user leave requests:', activeRequests.length);
+    } catch (error) {
+      console.error('Error loading user leave requests:', error);
+      // Don't block the form if this fails, but log the error
+    } finally {
+      setLoadingUserRequests(false);
+    }
+  };
+
+  // Helper function to get all dates in a range
+  const getDatesInRange = useCallback((startDate: Date, endDate: Date): Date[] => {
+    const dates: Date[] = [];
+    const currentDate = new Date(startDate);
+    
+    while (currentDate <= endDate) {
+      dates.push(new Date(currentDate));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    return dates;
+  }, []);
+
+  // Helper function to check if a date conflicts with existing requests
+  const hasDateConflict = useCallback((checkDate: Date): { hasConflict: boolean; conflictingRequest?: LeaveRequest } => {
+    if (loadingUserRequests) return { hasConflict: false };
+    
+    for (const request of userLeaveRequests) {
+      const requestDates = getDatesInRange(request.fromDate, request.toDate || request.fromDate);
+      
+      // Check if the checkDate falls within any existing request's date range
+      const hasConflict = requestDates.some(reqDate => 
+        reqDate.toDateString() === checkDate.toDateString()
+      );
+      
+      if (hasConflict) {
+        return { hasConflict: true, conflictingRequest: request };
+      }
+    }
+    
+    return { hasConflict: false };
+  }, [userLeaveRequests, loadingUserRequests, getDatesInRange]);
+
+  // Helper function to check if a date range conflicts with existing requests
+  const hasDateRangeConflict = useCallback((startDate: Date, endDate?: Date): { hasConflict: boolean; conflictingDates: Date[]; conflictingRequests: LeaveRequest[] } => {
+    if (loadingUserRequests) return { hasConflict: false, conflictingDates: [], conflictingRequests: [] };
+    
+    const checkDates = getDatesInRange(startDate, endDate || startDate);
+    const conflictingDates: Date[] = [];
+    const conflictingRequests: LeaveRequest[] = [];
+    
+    checkDates.forEach(checkDate => {
+      const conflict = hasDateConflict(checkDate);
+      if (conflict.hasConflict && conflict.conflictingRequest) {
+        conflictingDates.push(checkDate);
+        if (!conflictingRequests.find(req => req.id === conflict.conflictingRequest!.id)) {
+          conflictingRequests.push(conflict.conflictingRequest);
+        }
+      }
+    });
+    
+    return {
+      hasConflict: conflictingDates.length > 0,
+      conflictingDates,
+      conflictingRequests
+    };
+  }, [hasDateConflict, getDatesInRange, loadingUserRequests]);
 
   const calculateMaxToTime = useCallback((from: string) => {
     if (!from) return '';
@@ -116,13 +181,11 @@ export default function SubmitLeaveScreen() {
 
   const calculateDuration = useCallback(async () => {
     if (formData.leaveType === 'Compensation') {
-      // Compensation is always single day
       return (formData.workedDate && formData.leaveDate) ? '1 day (compensation)' : '';
     } else if (formData.leaveType === 'Leave' || formData.leaveType === 'On Duty') {
       if (!formData.fromDate) return '';
 
       if (formData.toDate) {
-        // Use working days calculation for Leave and On Duty
         try {
           const workingDays = await getWorkingDaysBetween(formData.fromDate, formData.toDate);
           const totalDays = Math.floor((formData.toDate.getTime() - formData.fromDate.getTime()) / (1000 * 3600 * 24)) + 1;
@@ -136,7 +199,6 @@ export default function SubmitLeaveScreen() {
           }
         } catch (error) {
           console.error('Error calculating working days:', error);
-          // Fallback to simple calculation
           const daysDiff = Math.floor((formData.toDate.getTime() - formData.fromDate.getTime()) / (1000 * 3600 * 24)) + 1;
           return daysDiff === 1 ? '1 day' : `${daysDiff} days`;
         }
@@ -146,7 +208,6 @@ export default function SubmitLeaveScreen() {
     } else if (formData.leaveType === 'Permission') {
       if (!formData.fromDate) return '';
       if (formData.fromTime && formData.toTime) {
-        // Validate time format
         const fromParts = formData.fromTime.split(':');
         const toParts = formData.toTime.split(':');
         if (fromParts.length !== 2 || toParts.length !== 2) return '';
@@ -175,7 +236,6 @@ export default function SubmitLeaveScreen() {
     return '';
   }, [formData]);
 
-  // Update calculated duration whenever relevant fields change
   useEffect(() => {
     const updateDuration = async () => {
       const duration = await calculateDuration();
@@ -189,62 +249,80 @@ export default function SubmitLeaveScreen() {
 
   const validateForm = useCallback(async () => {
     console.log('Validating form...');
-    console.log('Current formData:', formData);
-    console.log('Current user:', user);
-
+    
     if (!user) {
-      console.log('Validation failed: No user');
       Alert.alert('Error', 'User not found');
       return false;
     }
 
     if (user.role !== 'Staff') {
-      console.log('Validation failed: User role is not Staff, role is:', user.role);
       Alert.alert('Error', 'Only staff members can submit requests');
       return false;
     }
 
     if (!formData.empId || !formData.empId.trim()) {
-      console.log('Validation failed: Employee ID missing or empty, empId:', formData.empId);
       Alert.alert('Error', 'Please enter your Employee ID');
       return false;
     }
 
     if (!formData.department) {
-      console.log('Validation failed: Department missing');
       Alert.alert('Error', 'Please select your department');
       return false;
     }
 
     if (!formData.leaveType) {
-      console.log('Validation failed: Leave type missing');
       Alert.alert('Error', 'Please select leave type');
       return false;
     }
 
+    // Date conflict validation
     if (formData.leaveType === 'Compensation') {
       if (!formData.workedDate) {
-        console.log('Validation failed: Worked date missing');
         Alert.alert('Error', 'Please select worked date');
         return false;
       }
       if (!formData.leaveDate) {
-        console.log('Validation failed: Leave date missing');
         Alert.alert('Error', 'Please select leave date');
+        return false;
+      }
+      
+      // Check if leave date conflicts with existing requests
+      const leaveConflict = hasDateConflict(formData.leaveDate);
+      if (leaveConflict.hasConflict && leaveConflict.conflictingRequest) {
+        const conflictReq = leaveConflict.conflictingRequest;
+        Alert.alert(
+          'Date Conflict',
+          `You already have a ${conflictReq.status.toLowerCase()} ${conflictReq.requestType.toLowerCase()} request on ${formData.leaveDate.toLocaleDateString('en-GB')}. Please choose a different date.`
+        );
         return false;
       }
     } else {
       if (!formData.fromDate) {
-        console.log('Validation failed: From date missing');
         Alert.alert('Error', 'Please select date');
+        return false;
+      }
+
+      // Check date range conflicts for Leave, Permission, and On Duty
+      const rangeConflict = hasDateRangeConflict(formData.fromDate, formData.toDate);
+      if (rangeConflict.hasConflict) {
+        const conflictingDatesStr = rangeConflict.conflictingDates
+          .map(date => date.toLocaleDateString('en-GB'))
+          .join(', ');
+        
+        const conflictingRequests = rangeConflict.conflictingRequests
+          .map(req => `${req.requestType} (${req.status})`)
+          .join(', ');
+        
+        Alert.alert(
+          'Date Conflict',
+          `You already have conflicting requests on the following dates: ${conflictingDatesStr}\n\nConflicting requests: ${conflictingRequests}\n\nPlease choose different dates.`
+        );
         return false;
       }
     }
 
     if (formData.leaveType === 'Leave' || formData.leaveType === 'On Duty') {
-      // Validate date range if to date is selected
       if (formData.toDate && formData.fromDate && formData.fromDate > formData.toDate) {
-        // Auto-correct: set toDate = fromDate if user selects negative range
         setFormData(prev => ({ ...prev, toDate: prev.fromDate }));
         Alert.alert('Error', 'To date cannot be before From date. Adjusted to match From date.');
         return false;
@@ -252,52 +330,42 @@ export default function SubmitLeaveScreen() {
     }
 
     if (formData.leaveType === 'Permission') {
-      // Permission is single day only, validate times
       if (!formData.fromTime) {
-        console.log('Validation failed: From time missing');
         Alert.alert('Error', 'Please select from time');
         return false;
       }
       if (!formData.toTime) {
-        console.log('Validation failed: To time missing');
         Alert.alert('Error', 'Please select to time');
         return false;
       }
 
-      // Validate time range (max 2 hours for Permission and between 8 AM - 4 PM)
       const [fromHour, fromMinute] = formData.fromTime.split(':').map(Number);
       const [toHour, toMinute] = formData.toTime.split(':').map(Number);
       const fromMinutes = fromHour * 60 + fromMinute;
       const toMinutes = toHour * 60 + toMinute;
       const diffMinutes = toMinutes - fromMinutes;
 
-      // Check if times are within working hours (8 AM - 4 PM)
       if (fromMinutes < 8 * 60 || fromMinutes > 16 * 60) {
-        console.log('Validation failed: From time outside working hours');
         Alert.alert('Error', 'From time must be between 8:00 AM and 4:00 PM');
         return false;
       }
 
       if (toMinutes < 8 * 60 || toMinutes > 16 * 60) {
-        console.log('Validation failed: To time outside working hours');
         Alert.alert('Error', 'To time must be between 8:00 AM and 4:00 PM');
         return false;
       }
 
       if (diffMinutes < 10) {
-        console.log('Validation failed: Permission duration less than 10 minutes');
         Alert.alert('Error', 'Permission duration must be at least 10 minutes');
         return false;
       }
-      if (diffMinutes > 120) { // 2 hours max
-        console.log('Validation failed: Permission duration exceeds 2 hours');
+      if (diffMinutes > 120) {
         Alert.alert('Error', 'Permission duration cannot exceed 2 hours');
         return false;
       }
     }
 
     if (!formData.reason.trim()) {
-      console.log('Validation failed: Reason missing');
       Alert.alert('Error', 'Please enter reason');
       return false;
     }
@@ -315,7 +383,6 @@ export default function SubmitLeaveScreen() {
         const validation = await validateLeaveRequest(fromDate, toDate, formData.leaveType);
         
         if (!validation.isValid) {
-          console.log('Validation failed: Holiday sandwich detected');
           Alert.alert(
             'Leave Request Not Allowed',
             validation.errors.join('\n\n'),
@@ -324,9 +391,7 @@ export default function SubmitLeaveScreen() {
           return false;
         }
         
-        // Show warnings but allow user to proceed
         if (validation.warnings.length > 0) {
-          console.log('Validation warnings:', validation.warnings);
           return new Promise<boolean>((resolve) => {
             Alert.alert(
               'Leave Request Warning',
@@ -349,8 +414,6 @@ export default function SubmitLeaveScreen() {
         
       } catch (error) {
         console.error('Error during holiday validation:', error);
-        // Don't block submission if validation fails due to technical issues
-        console.log('Holiday validation failed, allowing submission to proceed');
       } finally {
         setValidating(false);
       }
@@ -358,38 +421,29 @@ export default function SubmitLeaveScreen() {
 
     console.log('Form validation passed successfully!');
     return true;
-  }, [formData, user]);
+  }, [formData, user, hasDateConflict, hasDateRangeConflict]);
 
   const handleSubmit = useCallback(async () => {
     console.log('Submit button clicked');
-    console.log('Form data:', formData);
-    console.log('User:', user);
-
+    
     const isValid = await validateForm();
     if (!isValid) {
-      console.log('Form validation failed');
       return;
     }
 
     if (!user) {
-      console.log('No user found');
       Alert.alert('Error', 'Please log in to submit request');
       return;
     }
 
-    console.log('Starting submission process...');
     setLoading(true);
 
     try {
-      // Update user's employee ID if it's different or missing
       if (formData.empId && formData.empId !== user.employeeId) {
-        console.log('Updating user employee ID to:', formData.empId);
         await updateUserEmployeeId(user.id, formData.empId);
-        // Update local user object
         setUser((prev: any) => ({ ...prev, employeeId: formData.empId }));
       }
 
-      // Create request data
       const requestData: any = {
         userId: user.id,
         empId: user.employeeId,
@@ -400,42 +454,30 @@ export default function SubmitLeaveScreen() {
         duration: formData.calculatedDuration,
       };
 
-      console.log(requestData);
-
-      // Add conditional fields based on leave type
       if (formData.leaveType === 'Compensation') {
-        // For compensation, use worked date and leave date
-        requestData.fromDate = formData.leaveDate!; // The actual leave date
-        requestData.toDate = formData.leaveDate!;   // Same as from date (single day)
-        requestData.workedDate = formData.workedDate!; // Store the worked date separately
+        requestData.fromDate = formData.leaveDate!;
+        requestData.toDate = formData.leaveDate!;
+        requestData.workedDate = formData.workedDate!;
 
-        // Format reason with worked date and leave date info
         const workedDateStr = formData.workedDate!.toLocaleDateString('en-GB');
         const leaveDateStr = formData.leaveDate!.toLocaleDateString('en-GB');
         requestData.reason = `Worked Date: ${workedDateStr}\nLeave Date: ${leaveDateStr}\n${formData.reason}`;
       } else if (formData.leaveType === 'Leave') {
-        // Use selected to date or same date for single day
         requestData.fromDate = formData.fromDate!;
         requestData.toDate = formData.toDate || formData.fromDate;
-        requestData.leaveSubType = formData.leaveSubType; // Add subtype for leave
+        requestData.leaveSubType = formData.leaveSubType;
       } else if (formData.leaveType === 'Permission') {
-        // Permission is always single day
         requestData.fromDate = formData.fromDate!;
         requestData.toDate = formData.fromDate;
         requestData.fromTime = formData.fromTime;
         requestData.toTime = formData.toTime;
       } else if (formData.leaveType === 'On Duty') {
-        // Use selected to date or same date for single day
         requestData.fromDate = formData.fromDate!;
         requestData.toDate = formData.toDate || formData.fromDate;
       }
 
-      console.log('Request data to submit:', requestData);
-
-      const result = await createLeaveRequest(requestData);
-      console.log('Submission result:', result);
-
-      // Show success immediately and navigate back
+      await createLeaveRequest(requestData);
+      
       setLoading(false);
       Alert.alert('Success', `${formData.leaveType} request submitted successfully`, [
         {
@@ -446,12 +488,12 @@ export default function SubmitLeaveScreen() {
         },
       ]);
 
-      // Reset form after successful submission (in background)
+      // Reset form and reload user requests
       setFormData({
-        empId: formData.empId, // Keep the current employee ID
+        empId: formData.empId,
         department: user.department,
         leaveType: 'Leave',
-        leaveSubType: 'Casual', // Change default to Casual
+        leaveSubType: 'Casual',
         leaveDuration: 'single',
         fromDate: null,
         toDate: null,
@@ -462,13 +504,16 @@ export default function SubmitLeaveScreen() {
         reason: '',
         calculatedDuration: '',
       });
+      
+      // Refresh user leave requests to include the new one
+      await loadUserLeaveRequests(user.id);
     } catch (error: any) {
       console.error('Submission error:', error);
       Alert.alert('Error', error.message || 'Failed to submit request. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [validateForm, formData, user]);
+  }, [validateForm, formData, user, loadUserLeaveRequests]);
 
   if (!user) {
     return (
@@ -509,15 +554,23 @@ export default function SubmitLeaveScreen() {
                 Fill in the details for your {formData.leaveType.toLowerCase()} request
               </Text>
               
-              {/* Holiday Sandwich Prevention Info */}
+              {/* Leave Policy Info */}
               {(formData.leaveType === 'Leave' || formData.leaveType === 'On Duty') && (
                 <View style={styles.infoBox}>
-                  <Text style={styles.infoTitle}>📋 Leave Policy Reminder</Text>
+                  <Text style={styles.infoTitle}>Leave Policy Reminder</Text>
                   <Text style={styles.infoText}>
                     • Cannot take leave on both sides of a holiday{'\n'}
                     • Cannot create long weekends (Friday + Monday){'\n'}
+                    • Cannot overlap with existing leave requests{'\n'}
                     • Compensation leave is exempt from these restrictions
                   </Text>
+                </View>
+              )}
+
+              {/* Date Conflict Warning */}
+              {loadingUserRequests && (
+                <View style={styles.conflictWarning}>
+                  <Text style={styles.conflictWarningText}>Loading your existing requests...</Text>
                 </View>
               )}
             </View>
@@ -552,17 +605,15 @@ export default function SubmitLeaveScreen() {
                   onValueChange={(value) => setFormData(prev => ({
                     ...prev,
                     leaveType: value,
-                    // Reset fields when changing leave type
                     toDate: null,
                     fromTime: '',
                     toTime: '',
                     calculatedDuration: '',
-                    leaveSubType: value === 'Leave' ? 'Casual' : '', // Reset to Casual as default
+                    leaveSubType: value === 'Leave' ? 'Casual' : '',
                   }))}
                   containerStyle={styles.input}
                 />
 
-                {/* Leave Sub-type for Leave only */}
                 {formData.leaveType === 'Leave' && (
                   <Picker
                     label="Leave Type"
@@ -573,10 +624,6 @@ export default function SubmitLeaveScreen() {
                   />
                 )}
 
-                {/* Compensation Leave Information Banner */}
-                {formData.leaveType === 'Compensation'}
-
-                {/* Compensation Leave - Two separate date pickers */}
                 {formData.leaveType === 'Compensation' ? (
                   <>
                     <DatePicker
@@ -588,18 +635,30 @@ export default function SubmitLeaveScreen() {
                       allowHolidays={true}
                       showHolidayWarning={false}
                       isCompensationLeave={true}
-                      maximumDate={new Date()} // Can only select past dates for worked date
+                      maximumDate={new Date()}
                     />
                     <DatePicker
                       label="Compensation on"
                       value={formData.leaveDate}
-                      onValueChange={(date) => setFormData(prev => ({ ...prev, leaveDate: date }))}
+                      onValueChange={(date) => {
+                        if (date) {
+                          const conflict = hasDateConflict(date);
+                          if (conflict.hasConflict && conflict.conflictingRequest) {
+                            Alert.alert(
+                              'Date Conflict',
+                              `You already have a ${conflict.conflictingRequest.status.toLowerCase()} ${conflict.conflictingRequest.requestType.toLowerCase()} request on ${date.toLocaleDateString('en-GB')}. Please choose a different date.`
+                            );
+                            return;
+                          }
+                        }
+                        setFormData(prev => ({ ...prev, leaveDate: date }));
+                      }}
                       containerStyle={styles.input}
-                      allowWeekends={false} // Block weekends for leave date
-                      allowHolidays={false} // Block holidays for leave date
-                      showHolidayWarning={true} // Show warning for holidays/weekends
-                      isCompensationLeave={false} // Treat as regular working day selection
-                      minimumDate={new Date()} // Can only select future dates for leave date
+                      allowWeekends={false}
+                      allowHolidays={false}
+                      showHolidayWarning={true}
+                      isCompensationLeave={false}
+                      minimumDate={new Date()}
                     />
                   </>
                 ) : (
@@ -607,8 +666,17 @@ export default function SubmitLeaveScreen() {
                     label="From Date"
                     value={formData.fromDate}
                     onValueChange={(date) => {
+                      if (date) {
+                        const conflict = hasDateConflict(date);
+                        if (conflict.hasConflict && conflict.conflictingRequest) {
+                          Alert.alert(
+                            'Date Conflict',
+                            `You already have a ${conflict.conflictingRequest.status.toLowerCase()} ${conflict.conflictingRequest.requestType.toLowerCase()} request on ${date.toLocaleDateString('en-GB')}. Please choose a different date.`
+                          );
+                          return;
+                        }
+                      }
                       setFormData(prev => {
-                        // If toDate is before new fromDate, auto-correct toDate
                         if (prev.toDate && date && prev.toDate < date) {
                           return { ...prev, fromDate: date, toDate: date };
                         }
@@ -623,14 +691,26 @@ export default function SubmitLeaveScreen() {
                   />
                 )}
 
-                {/* To Date for Leave and On Duty only - not Permission or Compensation */}
                 {(formData.leaveType === 'Leave' || formData.leaveType === 'On Duty') && (
                   <DatePicker
                     label="To Date"
                     value={formData.toDate}
                     onValueChange={(date) => {
+                      if (date && formData.fromDate) {
+                        // Check for conflicts in the range
+                        const rangeConflict = hasDateRangeConflict(formData.fromDate, date);
+                        if (rangeConflict.hasConflict) {
+                          const conflictingDatesStr = rangeConflict.conflictingDates
+                            .map(conflictDate => conflictDate.toLocaleDateString('en-GB'))
+                            .join(', ');
+                          Alert.alert(
+                            'Date Conflict',
+                            `Your selected date range conflicts with existing requests on: ${conflictingDatesStr}. Please adjust your dates.`
+                          );
+                          return;
+                        }
+                      }
                       setFormData(prev => {
-                        // Prevent selecting toDate before fromDate
                         if (prev.fromDate && date && date < prev.fromDate) {
                           return { ...prev, toDate: prev.fromDate };
                         }
@@ -651,13 +731,11 @@ export default function SubmitLeaveScreen() {
                       label="From Time"
                       value={formData.fromTime}
                       onValueChange={(time) => {
-                        // Validate if time is within working hours (8 AM to 4 PM)
                         const [h, m] = time.split(':').map(Number);
                         const timeInMinutes = h * 60 + m;
-                        const workStartMinutes = 8 * 60; // 8:00 AM
-                        const workEndMinutes = 16 * 60; // 4:00 PM
+                        const workStartMinutes = 8 * 60;
+                        const workEndMinutes = 16 * 60;
 
-                        // Check if time is outside working hours
                         if (timeInMinutes < workStartMinutes || timeInMinutes >= workEndMinutes) {
                           Alert.alert(
                             'Invalid Time',
@@ -667,11 +745,7 @@ export default function SubmitLeaveScreen() {
                           return;
                         }
 
-                        // Only allow 08:00–11:00 and 12:00–15:00 for permission requests
-                        if (!(
-                          (h >= 8 && h <= 11) ||
-                          (h >= 12 && h <= 15)
-                        )) {
+                        if (!((h >= 8 && h <= 11) || (h >= 12 && h <= 15))) {
                           Alert.alert(
                             'Invalid Permission Time',
                             'Permission can only be requested during:\n• Morning: 8:00 AM - 11:00 AM\n• Afternoon: 12:00 PM - 3:00 PM',
@@ -680,7 +754,6 @@ export default function SubmitLeaveScreen() {
                           return;
                         }
 
-                        // Calculate toTime: +1hr, capped at 12:00 for forenoon, 16:00 for afternoon
                         let toHour = h + 1;
                         let toMinute = m;
                         if (h >= 8 && h <= 11) {
@@ -705,7 +778,6 @@ export default function SubmitLeaveScreen() {
                       isPermission={true}
                     />
 
-                    {/* Read-only To Time field */}
                     <View style={styles.input}>
                       <Text style={styles.label}>To Time</Text>
                       <View style={[styles.readOnlyTimeDisplay]}>
@@ -722,7 +794,6 @@ export default function SubmitLeaveScreen() {
                       </View>
                     </View>
 
-                    {/* Permission Duration Display */}
                     {formData.calculatedDuration && (
                       <View style={styles.permissionDurationContainer}>
                         <Text style={styles.permissionDurationLabel}>Permission Duration</Text>
@@ -737,7 +808,6 @@ export default function SubmitLeaveScreen() {
                   </>
                 )}
 
-                {/* Enhanced Duration Display with working days info */}
                 {formData.calculatedDuration && formData.leaveType !== 'Permission' && (
                   <View style={styles.durationContainer}>
                     <Text style={styles.durationLabel}>Duration</Text>
@@ -749,12 +819,12 @@ export default function SubmitLeaveScreen() {
                     </View>
                     {formData.calculatedDuration.includes('working days') && (
                       <Text style={styles.durationNote}>
-                        ℹ️ Weekends and holidays are excluded from working days count
+                        Weekends and holidays are excluded from working days count
                       </Text>
                     )}
                     {formData.leaveType === 'Compensation' && (
                       <Text style={styles.compensationNote}>
-                        💡 Compensation leave for work done on non-working days
+                        Compensation leave for work done on non-working days
                       </Text>
                     )}
                   </View>
@@ -774,7 +844,6 @@ export default function SubmitLeaveScreen() {
                   containerStyle={styles.input}
                 />
 
-                {/* Show compensation dates summary */}
                 {formData.leaveType === 'Compensation' && formData.workedDate && formData.leaveDate && (
                   <View style={styles.compensationSummary}>
                     <Text style={styles.compensationSummaryTitle}>Compensation Summary</Text>
@@ -789,7 +858,7 @@ export default function SubmitLeaveScreen() {
 
                 {validating && (
                   <View style={styles.validationIndicator}>
-                    <Text style={styles.validationText}>🔍 Checking for holiday conflicts...</Text>
+                    <Text style={styles.validationText}>Checking for holiday conflicts...</Text>
                   </View>
                 )}
 
@@ -1109,5 +1178,27 @@ const styles = StyleSheet.create({
     color: '#1E40AF',
     lineHeight: 18,
     textAlign: 'left',
+  },
+  conflictWarning: {
+    backgroundColor: '#FEF3C7',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
+  },
+  conflictWarningText: {
+    fontSize: 14,
+    color: '#92400E',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  compensationNote: {
+    fontSize: 12,
+    color: '#059669',
+    marginTop: 8,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
 });

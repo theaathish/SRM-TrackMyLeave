@@ -186,11 +186,12 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
         if (workingDays === 0) {
           return 'No working days';
         } else if (workingDays === 1) {
-          return `1 working day${diffDays > 1 ? ` (${diffDays} total)` : ''}`;
+          return '1 working day';
         } else {
-          return `${workingDays} working days${diffDays !== workingDays ? ` (${diffDays} total)` : ''}`;
+          return `${workingDays} working days`;
         }
       }
+
       
       return `${diffDays} days`;
     }
