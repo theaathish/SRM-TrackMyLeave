@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, Alert, KeyboardAvoidingView, Platform, StyleSheet, Animated, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Picker } from '@/components/ui/Picker';
@@ -68,6 +68,15 @@ export default function SubmitLeaveScreen() {
     ]).start();
   }, []);
 
+  // Add this useFocusEffect hook to refresh leave requests when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        loadUserLeaveRequests(user.id);
+      }
+    }, [user])
+  );
+
   const loadUserData = async () => {
     try {
       const currentUser = await getCurrentUser();
@@ -78,8 +87,9 @@ export default function SubmitLeaveScreen() {
           department: currentUser.department,
           empId: currentUser.employeeId || ''
         }));
-        
-        // Load user's existing leave requests for date conflict checking
+
+        // Always reload user's existing leave requests
+        console.log('Reloading user leave requests...');
         await loadUserLeaveRequests(currentUser.id);
       } else {
         router.replace('/auth');
@@ -90,12 +100,13 @@ export default function SubmitLeaveScreen() {
     }
   };
 
+
   const loadUserLeaveRequests = async (userId: string) => {
     try {
       setLoadingUserRequests(true);
       const requests = await getLeaveRequests(userId);
       // Filter for approved and pending requests only
-      const activeRequests = requests.filter(req => 
+      const activeRequests = requests.filter(req =>
         req.status === 'Approved' || req.status === 'Pending'
       );
       setUserLeaveRequests(activeRequests);
@@ -112,43 +123,43 @@ export default function SubmitLeaveScreen() {
   const getDatesInRange = useCallback((startDate: Date, endDate: Date): Date[] => {
     const dates: Date[] = [];
     const currentDate = new Date(startDate);
-    
+
     while (currentDate <= endDate) {
       dates.push(new Date(currentDate));
       currentDate.setDate(currentDate.getDate() + 1);
     }
-    
+
     return dates;
   }, []);
 
   // Helper function to check if a date conflicts with existing requests
   const hasDateConflict = useCallback((checkDate: Date): { hasConflict: boolean; conflictingRequest?: LeaveRequest } => {
     if (loadingUserRequests) return { hasConflict: false };
-    
+
     for (const request of userLeaveRequests) {
       const requestDates = getDatesInRange(request.fromDate, request.toDate || request.fromDate);
-      
+
       // Check if the checkDate falls within any existing request's date range
-      const hasConflict = requestDates.some(reqDate => 
+      const hasConflict = requestDates.some(reqDate =>
         reqDate.toDateString() === checkDate.toDateString()
       );
-      
+
       if (hasConflict) {
         return { hasConflict: true, conflictingRequest: request };
       }
     }
-    
+
     return { hasConflict: false };
   }, [userLeaveRequests, loadingUserRequests, getDatesInRange]);
 
   // Helper function to check if a date range conflicts with existing requests
   const hasDateRangeConflict = useCallback((startDate: Date, endDate?: Date): { hasConflict: boolean; conflictingDates: Date[]; conflictingRequests: LeaveRequest[] } => {
     if (loadingUserRequests) return { hasConflict: false, conflictingDates: [], conflictingRequests: [] };
-    
+
     const checkDates = getDatesInRange(startDate, endDate || startDate);
     const conflictingDates: Date[] = [];
     const conflictingRequests: LeaveRequest[] = [];
-    
+
     checkDates.forEach(checkDate => {
       const conflict = hasDateConflict(checkDate);
       if (conflict.hasConflict && conflict.conflictingRequest) {
@@ -158,7 +169,7 @@ export default function SubmitLeaveScreen() {
         }
       }
     });
-    
+
     return {
       hasConflict: conflictingDates.length > 0,
       conflictingDates,
@@ -249,7 +260,7 @@ export default function SubmitLeaveScreen() {
 
   const validateForm = useCallback(async () => {
     console.log('Validating form...');
-    
+
     if (!user) {
       Alert.alert('Error', 'User not found');
       return false;
@@ -285,7 +296,7 @@ export default function SubmitLeaveScreen() {
         Alert.alert('Error', 'Please select leave date');
         return false;
       }
-      
+
       // Check if leave date conflicts with existing requests
       const leaveConflict = hasDateConflict(formData.leaveDate);
       if (leaveConflict.hasConflict && leaveConflict.conflictingRequest) {
@@ -308,11 +319,11 @@ export default function SubmitLeaveScreen() {
         const conflictingDatesStr = rangeConflict.conflictingDates
           .map(date => date.toLocaleDateString('en-GB'))
           .join(', ');
-        
+
         const conflictingRequests = rangeConflict.conflictingRequests
           .map(req => `${req.requestType} (${req.status})`)
           .join(', ');
-        
+
         Alert.alert(
           'Date Conflict',
           `You already have conflicting requests on the following dates: ${conflictingDatesStr}\n\nConflicting requests: ${conflictingRequests}\n\nPlease choose different dates.`
@@ -376,12 +387,12 @@ export default function SubmitLeaveScreen() {
         console.log('Running holiday sandwich validation...');
         setValidating(true);
         const { validateLeaveRequest } = await import('@/lib/holidays');
-        
+
         const fromDate = formData.fromDate!;
         const toDate = formData.toDate || formData.fromDate!;
-        
+
         const validation = await validateLeaveRequest(fromDate, toDate, formData.leaveType);
-        
+
         if (!validation.isValid) {
           Alert.alert(
             'Leave Request Not Allowed',
@@ -390,20 +401,20 @@ export default function SubmitLeaveScreen() {
           );
           return false;
         }
-        
+
         if (validation.warnings.length > 0) {
           return new Promise<boolean>((resolve) => {
             Alert.alert(
               'Leave Request Warning',
               validation.warnings.join('\n\n') + '\n\nDo you want to continue?',
               [
-                { 
-                  text: 'Cancel', 
+                {
+                  text: 'Cancel',
                   style: 'cancel',
                   onPress: () => resolve(false)
                 },
-                { 
-                  text: 'Continue', 
+                {
+                  text: 'Continue',
                   style: 'default',
                   onPress: () => resolve(true)
                 }
@@ -411,7 +422,7 @@ export default function SubmitLeaveScreen() {
             );
           });
         }
-        
+
       } catch (error) {
         console.error('Error during holiday validation:', error);
       } finally {
@@ -425,7 +436,7 @@ export default function SubmitLeaveScreen() {
 
   const handleSubmit = useCallback(async () => {
     console.log('Submit button clicked');
-    
+
     const isValid = await validateForm();
     if (!isValid) {
       return;
@@ -477,7 +488,7 @@ export default function SubmitLeaveScreen() {
       }
 
       await createLeaveRequest(requestData);
-      
+
       setLoading(false);
       Alert.alert('Success', `${formData.leaveType} request submitted successfully`, [
         {
@@ -504,7 +515,7 @@ export default function SubmitLeaveScreen() {
         reason: '',
         calculatedDuration: '',
       });
-      
+
       // Refresh user leave requests to include the new one
       await loadUserLeaveRequests(user.id);
     } catch (error: any) {
@@ -553,7 +564,7 @@ export default function SubmitLeaveScreen() {
               <Text style={styles.subtitle}>
                 Fill in the details for your {formData.leaveType.toLowerCase()} request
               </Text>
-              
+
               {/* Leave Policy Info */}
               {(formData.leaveType === 'Leave' || formData.leaveType === 'On Duty') && (
                 <View style={styles.infoBox}>

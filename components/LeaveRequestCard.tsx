@@ -4,8 +4,8 @@ import { Card, CardContent, CardFooter } from './ui/Card';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { StatusBadge } from './StatusBadge';
-import { Check, X, FileText, Calendar, User, ChevronRight } from 'lucide-react-native';
-import { updateLeaveRequestStatus, fetchMatchingLeaves } from '@/lib/firestore';
+import { Check, X, FileText, Calendar, User, ChevronRight, Trash2 } from 'lucide-react-native';
+import { updateLeaveRequestStatus, fetchMatchingLeaves, deleteLeaveRequest } from '@/lib/firestore';
 import { LeaveRequest } from '@/lib/firestore';
 import { getWorkingDaysBetween } from '@/lib/holidays';
 import { useRouter } from 'expo-router';
@@ -24,6 +24,7 @@ interface LeaveRequestCardProps {
 function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimisticUpdate }: LeaveRequestCardProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [workingDays, setWorkingDays] = useState<number | null>(null);
   const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
   const [matchingLeavesCount, setMatchingLeavesCount] = useState(0);
@@ -70,6 +71,61 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
     }
   };
 
+  const handleDelete = async () => {
+    if (deleteLoading) return; // Prevent double-tap
+    
+    // Format the leave type for display
+    const leaveTypeDisplay = request.requestType === 'Permission' ? 'Permission' : 
+                            request.requestType === 'Leave' ? `${request.leaveSubType || 'Casual'} Leave` : 
+                            request.requestType === 'On Duty' ? 'On Duty' :
+                            request.requestType === 'Compensation' ? 'Compensation' :
+                            request.requestType;
+    
+    // Format the date for display
+    const dateDisplay = request.requestType === 'Permission' 
+      ? formatDate(request.fromDate)
+      : request.toDate && request.toDate.getTime() !== request.fromDate.getTime()
+        ? `${formatDate(request.fromDate)} to ${formatDate(request.toDate)}`
+        : formatDate(request.fromDate);
+
+    Alert.alert(
+      'Delete Request',
+      `Are you sure you need to delete this ${leaveTypeDisplay} request for ${dateDisplay}?`,
+      [
+        {
+          text: 'No',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleteLoading(true);
+            try {
+              await deleteLeaveRequest(request.id);
+              
+              Alert.alert(
+                'Success',
+                'Leave request deleted successfully',
+                [{ text: 'OK', style: 'default' }],
+                { cancelable: true }
+              );
+              
+              // Update parent component to refresh the screen
+              onUpdate?.();
+            } catch (error) {
+              console.error('Error deleting request:', error);
+              Alert.alert('Error', 'Failed to delete request. Please try again.');
+            } finally {
+              setDeleteLoading(false);
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
   const handleApprove = async () => {
     if (loading) return; // Prevent double-tap
     
@@ -92,7 +148,7 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
       );
       
       Alert.alert(
-        'Success ✅', 
+        'Success', 
         'Leave request approved successfully',
         [{ text: 'OK', style: 'default' }],
         { cancelable: true }
@@ -131,7 +187,7 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
       );
       
       Alert.alert(
-        'Success ❌', 
+        'Success', 
         'Leave request denied',
         [{ text: 'OK', style: 'default' }],
         { cancelable: true }
@@ -238,7 +294,20 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
                 {request.department} • ID: {request.empId}
               </Text>
             </View>
-            <StatusBadge status={displayStatus as any} />
+            <View style={styles.headerRight}>
+              <StatusBadge status={displayStatus as any} />
+              {/* Delete button for staff's own pending requests */}
+              {!isDirector && request.status === 'Pending' && !optimisticStatus && (
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={handleDelete}
+                  activeOpacity={0.7}
+                  disabled={deleteLoading}
+                >
+                  <Trash2 size={18} color="#EF4444" />
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           <View style={styles.leaveTypeContainer}>
@@ -304,7 +373,16 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
           {optimisticStatus && (
             <View style={styles.optimisticIndicator}>
               <Text style={styles.optimisticText}>
-                {optimisticStatus === 'Approved' ? '✅ Approving...' : '❌ Denying...'}
+                {optimisticStatus === 'Approved' ? 'Approving...' : 'Denying...'}
+              </Text>
+            </View>
+          )}
+
+          {/* Delete loading indicator */}
+          {deleteLoading && (
+            <View style={styles.optimisticIndicator}>
+              <Text style={styles.optimisticText}>
+                Deleting request...
               </Text>
             </View>
           )}
@@ -362,6 +440,11 @@ const styles = StyleSheet.create({
   headerLeft: {
     flex: 1,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   // New clickable user info styles
   userInfoClickable: {
     marginBottom: 4,
@@ -398,6 +481,21 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontWeight: '500',
     marginLeft: 8,
+  },
+  deleteButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    shadowColor: '#EF4444',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   leaveTypeContainer: {
     flexDirection: 'row',

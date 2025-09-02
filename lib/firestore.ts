@@ -1,13 +1,14 @@
-import { 
-  collection, 
-  doc, 
-  addDoc, 
-  updateDoc, 
-  getDocs, 
+import {
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  getDocs,
   getDoc,
-  query, 
-  where, 
-  orderBy, 
+  deleteDoc, // Add this import
+  query,
+  where,
+  orderBy,
   limit,
   startAfter,
   Timestamp,
@@ -15,6 +16,7 @@ import {
   serverTimestamp,
   DocumentSnapshot
 } from 'firebase/firestore';
+
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from './firebase';
 import { sendNotificationToDirectors, sendPushNotificationToUser } from './notificationTokenManager';
@@ -265,6 +267,23 @@ export async function fetchMatchingLeaves(userId: string, leaveType: string, lea
     throw error;
   }
 }
+
+
+export const deleteLeaveRequest = async (requestId: string): Promise<void> => {
+  try {
+    console.log('Deleting leave request with ID:', requestId);
+    
+    // Delete the document from Firestore
+    await deleteDoc(doc(db, 'leaveRequests', requestId));
+    
+    console.log('Leave request deleted successfully');
+  } catch (error) {
+    console.error('Error deleting leave request:', error);
+    throw new Error(`Failed to delete leave request: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
+
 
 // Export constants
 export const LEAVE_REQUEST_CONSTANTS = {
