@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Platform, StyleSheet, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Calendar, AlertTriangle } from 'lucide-react-native';
-import { isHoliday, isWeekend, isDateBlocked } from '@/lib/holidays';
+import { Calendar, AlertTriangle, Briefcase } from 'lucide-react-native';
+import { isHoliday, isWeekend, isDateBlocked, isSaturday } from '@/lib/holidays';
 
 interface DatePickerProps {
   label?: string;
@@ -16,7 +16,7 @@ interface DatePickerProps {
   allowWeekends?: boolean;
   allowHolidays?: boolean;
   showHolidayWarning?: boolean;
-  isCompensationLeave?: boolean; // New prop to identify compensation leave
+  isCompensationLeave?: boolean;
 }
 
 export const DatePicker: React.FC<DatePickerProps> = ({
@@ -45,18 +45,30 @@ export const DatePicker: React.FC<DatePickerProps> = ({
 
   const handleChange = async (event: any, selectedDate?: Date) => {
     setShow(false);
-    
-    // Check for cancel action on Android or undefined selectedDate
+
     if (!selectedDate || event?.type === 'dismissed') {
       return;
     }
 
+    // Check if it's a Saturday and if it's a working Saturday
+    const isSat = isSaturday(selectedDate);
+    const { isHoliday: isHolidayDay, holiday, isSaturdayWorking } = await isHoliday(selectedDate);
+
     // Special handling for compensation leave
     if (isCompensationLeave) {
       const isWeekendDay = isWeekend(selectedDate);
-      const { isHoliday: isHolidayDay, holiday } = await isHoliday(selectedDate);
-      
+
       // For compensation leave, only allow weekends or holidays
+      // BUT exclude working Saturdays (since they're normal work days)
+      if (isSat && isSaturdayWorking) {
+        Alert.alert(
+          'Working Saturday',
+          'This Saturday is a working day. Compensation leave can only be selected for non-working days (holidays or regular Saturdays).',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
       if (!isWeekendDay && !isHolidayDay) {
         Alert.alert(
           'Invalid Date for Compensation Leave',
@@ -65,40 +77,68 @@ export const DatePicker: React.FC<DatePickerProps> = ({
         );
         return;
       }
-      
-      // Show confirmation message for successful selection
-      let confirmMessage = '';
-      if (isWeekendDay && isHolidayDay) {
-        confirmMessage = `Selected ${formatDate(selectedDate)} (Weekend & ${holiday?.name})`;
-      } else if (isWeekendDay) {
-        confirmMessage = `Selected ${formatDate(selectedDate)} (Weekend)`;
-      } else if (isHolidayDay) {
-        confirmMessage = `Selected ${formatDate(selectedDate)} (${holiday?.name})`;
-      }
-      
+
       onValueChange(selectedDate);
       return;
     }
 
     // Normal date picker logic for other leave types
-    const { isBlocked, reason, holiday } = await isDateBlocked(selectedDate);
-    
+    const { isBlocked, reason, holiday: blockedHoliday } = await isDateBlocked(selectedDate);
+
+    // If it's a working Saturday, show info but allow selection
+    if (isSat && isSaturdayWorking) {
+      Alert.alert(
+        'Working Saturday',
+        `${formatDate(selectedDate)} is a working Saturday. You can apply for leave on this day.`,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Continue',
+            onPress: () => onValueChange(selectedDate),
+          },
+        ]
+      );
+      return;
+    }
+
+    // Block non-working Saturdays and Sundays if not allowed
     if (isBlocked && (!allowWeekends || !allowHolidays)) {
       if (!allowWeekends && isWeekend(selectedDate)) {
         Alert.alert('Weekend Not Allowed', 'Please select a weekday.');
         return;
       }
-      
-      if (!allowHolidays && holiday) {
-        Alert.alert('Holiday Not Allowed', `${holiday.name} is not allowed for selection.`);
+
+      if (!allowHolidays && blockedHoliday) {
+        Alert.alert('Holiday Not Allowed', `${blockedHoliday.name} is not allowed for selection.`);
         return;
       }
     }
-    
+
+    // Show warning for holidays (if enabled)
+    if (showHolidayWarning && isBlocked && blockedHoliday) {
+      Alert.alert(
+        'Holiday Selected',
+        `${formatDate(selectedDate)} is ${blockedHoliday.name}. Do you want to select this date?`,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Yes',
+            onPress: () => onValueChange(selectedDate),
+          },
+        ]
+      );
+      return;
+    }
+
     onValueChange(selectedDate);
   };
 
-  // Update placeholder text for compensation leave
   const getPlaceholder = () => {
     if (isCompensationLeave) {
       return 'Select weekend or holiday';
@@ -106,7 +146,6 @@ export const DatePicker: React.FC<DatePickerProps> = ({
     return placeholder;
   };
 
-  // Update label styling for compensation leave
   const getLabelStyle = () => {
     if (isCompensationLeave) {
       return [styles.label, styles.compensationLabel];
@@ -154,8 +193,13 @@ export const DatePicker: React.FC<DatePickerProps> = ({
       {/* Helper text for compensation leave */}
       {isCompensationLeave && (
         <Text style={styles.helperText}>
-          💡 Select a weekend or public holiday
+          💡 Select a weekend or public holiday (excludes working Saturdays)
         </Text>
+      )}
+
+      {/* Show working Saturday indicator */}
+      {!isCompensationLeave && value && isSaturday(value) && (
+        <WorkingSaturdayIndicator date={value} />
       )}
 
       {show && (
@@ -172,6 +216,37 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   );
 };
 
+// New component to show working Saturday status
+const WorkingSaturdayIndicator: React.FC<{ date: Date }> = ({ date }) => {
+  const [isWorking, setIsWorking] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    const checkStatus = async () => {
+      const { isSaturdayWorking } = await isHoliday(date);
+      setIsWorking(isSaturdayWorking || false);
+    };
+    checkStatus();
+  }, [date]);
+
+  if (isWorking === null) return null;
+
+  if (isWorking) {
+    return (
+      <View style={styles.workingSaturdayBadge}>
+        <Briefcase size={14} color="#059669" />
+        <Text style={styles.workingSaturdayText}>Working Saturday - Leave can be applied</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.holidaySaturdayBadge}>
+      <Calendar size={14} color="#6B7280" />
+      <Text style={styles.holidaySaturdayText}>Holiday Saturday</Text>
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   container: { width: '100%' },
   labelContainer: {
@@ -180,13 +255,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  label: { 
-    fontSize: 15, 
-    fontWeight: '600', 
+  label: {
+    fontSize: 15,
+    fontWeight: '600',
     color: '#374151',
   },
   compensationLabel: {
-    color: '#D97706', // Orange color for compensation
+    color: '#D97706',
   },
   compensationNote: {
     flexDirection: 'row',
@@ -222,9 +297,9 @@ const styles = StyleSheet.create({
   },
   datePickerError: { borderColor: '#EF4444' },
   dateDisplay: { flexDirection: 'row', alignItems: 'center' },
-  dateText: { 
-    fontSize: 16, 
-    color: '#111827', 
+  dateText: {
+    fontSize: 16,
+    color: '#111827',
     marginLeft: 12,
   },
   compensationDateText: {
@@ -232,10 +307,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   placeholderText: { color: '#9CA3AF' },
-  errorText: { 
-    color: '#EF4444', 
-    fontSize: 14, 
-    marginTop: 6, 
+  errorText: {
+    color: '#EF4444',
+    fontSize: 14,
+    marginTop: 6,
     fontWeight: '500',
   },
   helperText: {
@@ -245,4 +320,35 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     lineHeight: 16,
   },
+  workingSaturdayBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  workingSaturdayText: {
+    fontSize: 12,
+    color: '#065F46',
+    marginLeft: 6,
+    fontWeight: '600',
+  },
+  holidaySaturdayBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  holidaySaturdayText: {
+    fontSize: 12,
+    color: '#4B5563',
+    marginLeft: 6,
+    fontWeight: '600',
+  },
 });
+

@@ -5,7 +5,7 @@ import {
   updateDoc,
   getDocs,
   getDoc,
-  deleteDoc, // Add this import
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -56,7 +56,7 @@ export const createLeaveRequest = async (
 ): Promise<string> => {
   try {
     console.log('Creating leave request with data:', requestData);
-    
+
     const dataToSave = {
       ...requestData,
       fromDate: Timestamp.fromDate(requestData.fromDate),
@@ -67,20 +67,20 @@ export const createLeaveRequest = async (
       priority: requestData.priority || 'Medium',
       isUrgent: requestData.isUrgent || false,
     };
-    
+
     const docRef = await addDoc(collection(db, 'leaveRequests'), dataToSave);
     console.log('Leave request created with ID:', docRef.id);
-    
+
     // Send HIGH PRIORITY notifications asynchronously
     setImmediate(async () => {
       try {
         const userDoc = await getDoc(doc(db, 'users', requestData.userId));
         const userName = userDoc.exists() ? userDoc.data().name : 'Unknown User';
         const userDepartment = requestData.department;
-        
+
         // Determine notification priority based on request
         const notificationPriority = requestData.isUrgent ? 'urgent' : 'high';
-        
+
         // Send HIGH PRIORITY notification to all directors
         await sendNotificationToDirectors(
           requestData.isUrgent ? '🚨 URGENT: New Leave Request' : '📋 New Leave Request',
@@ -90,7 +90,7 @@ export const createLeaveRequest = async (
         console.error('Error sending notification:', error);
       }
     });
-    
+
     return docRef.id;
   } catch (error) {
     console.error('Error creating leave request:', error);
@@ -104,7 +104,7 @@ export const getLeaveRequests = async (
 ): Promise<LeaveRequest[]> => {
   try {
     let querySnapshot;
-    
+
     if (userId) {
       // For staff: get only their requests
       const q = query(
@@ -125,7 +125,7 @@ export const getLeaveRequests = async (
     // Use Promise.all for concurrent user lookups
     const requestsPromises = querySnapshot.docs.map(async (docSnapshot) => {
       const data = docSnapshot.data();
-      
+
       // Get user name concurrently
       try {
         const userDoc = await getDoc(doc(db, 'users', data.userId));
@@ -157,10 +157,10 @@ export const getLeaveRequests = async (
     });
 
     const requests = await Promise.all(requestsPromises);
-    
+
     // Sort by createdAt descending
     requests.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    
+
     return requests;
   } catch (error) {
     console.error('Error getting leave requests:', error);
@@ -170,54 +170,54 @@ export const getLeaveRequests = async (
 
 // Enhanced status update with high priority notifications
 export const updateLeaveRequestStatus = async (
-  requestId: string, 
-  status: 'Approved' | 'Rejected', 
+  requestId: string,
+  status: 'Approved' | 'Rejected',
   remark?: string,
   approvedBy?: string
 ): Promise<void> => {
   try {
-    const updateData: any = { 
+    const updateData: any = {
       status,
       updatedAt: serverTimestamp(),
     };
-    
+
     if (remark) {
       updateData.remark = remark;
     }
-    
+
     if (approvedBy) {
       updateData.approvedBy = approvedBy;
       updateData.approvedAt = serverTimestamp();
     }
 
     await updateDoc(doc(db, 'leaveRequests', requestId), updateData);
-    
+
     // Send HIGH PRIORITY notifications asynchronously
     setImmediate(async () => {
       try {
         const requestDoc = await getDoc(doc(db, 'leaveRequests', requestId));
         if (requestDoc.exists()) {
           const requestData = requestDoc.data();
-          
+
           const userDoc = await getDoc(doc(db, 'users', requestData.userId));
           const userName = userDoc.exists() ? userDoc.data().name : 'Unknown User';
-          
+
           // Determine notification priority
           const notificationPriority = requestData.isUrgent ? 'urgent' : 'high';
-          
-          const notificationTitle = status === 'Approved' ? 
-            (requestData.isUrgent ? '✅ URGENT Request Approved' : '✅ Request Approved') : 
+
+          const notificationTitle = status === 'Approved' ?
+            (requestData.isUrgent ? '✅ URGENT Request Approved' : '✅ Request Approved') :
             (requestData.isUrgent ? '❌ URGENT Request Denied' : '❌ Request Denied');
-            
-          const notificationBody = status === 'Approved' 
+
+          const notificationBody = status === 'Approved'
             ? `Your ${requestData.requestType.toLowerCase()} request has been approved`
             : `Your ${requestData.requestType.toLowerCase()} request has been denied${remark ? `. Reason: ${remark}` : ''}`;
-          
+
           // Add notification type to data payload
           const notificationData = {
             type: status.toLowerCase() // 'approved' or 'rejected'
           };
-          
+
           // Send HIGH PRIORITY notification to the user
           await sendPushNotificationToUser(
             requestData.userId,
@@ -235,7 +235,6 @@ export const updateLeaveRequestStatus = async (
     throw new Error(`Failed to update leave request status: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
-
 
 export async function fetchMatchingLeaves(userId: string, leaveType: string, leaveSubType?: string) {
   const leavesRef = collection(db, "leaveRequests");
@@ -268,14 +267,13 @@ export async function fetchMatchingLeaves(userId: string, leaveType: string, lea
   }
 }
 
-
 export const deleteLeaveRequest = async (requestId: string): Promise<void> => {
   try {
     console.log('Deleting leave request with ID:', requestId);
-    
+
     // Delete the document from Firestore
     await deleteDoc(doc(db, 'leaveRequests', requestId));
-    
+
     console.log('Leave request deleted successfully');
   } catch (error) {
     console.error('Error deleting leave request:', error);
@@ -283,7 +281,101 @@ export const deleteLeaveRequest = async (requestId: string): Promise<void> => {
   }
 };
 
+/**
+ * Helper function to format date to YYYY-MM-DD
+ */
+const formatDateToYYYYMMDD = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
+/**
+ * Get all working Saturdays from Firestore
+ * @returns Array of date strings (YYYY-MM-DD format)
+ */
+export const getWorkingSaturdays = async (): Promise<string[]> => {
+  try {
+    const q = query(
+      collection(db, 'saturdayLeave'),
+      where('isHoliday', '==', false),
+      orderBy('date', 'asc')
+    );
+
+    const querySnapshot = await getDocs(q);
+    const workingSaturdays = querySnapshot.docs.map(doc => doc.data().date);
+
+    console.log(`Found ${workingSaturdays.length} working Saturdays`);
+    return workingSaturdays;
+  } catch (error) {
+    console.error('Error fetching working Saturdays:', error);
+    return [];
+  }
+};
+
+/**
+ * Check if a specific Saturday is a working day
+ * @param date - Date to check
+ * @returns true if it's a working Saturday, false otherwise
+ */
+export const isSaturdayWorking = async (date: Date): Promise<boolean> => {
+  try {
+    // Check if it's actually a Saturday
+    if (date.getDay() !== 6) {
+      return false;
+    }
+
+    const dateStr = formatDateToYYYYMMDD(date);
+    
+    const docRef = doc(db, 'saturdayLeave', dateStr);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return data.isHoliday === false;
+    }
+
+    // Document doesn't exist = default holiday (not working)
+    return false;
+  } catch (error) {
+    console.error('Error checking Saturday status:', error);
+    return false;
+  }
+};
+
+/**
+ * Get working Saturdays within a date range
+ * @param startDate - Start date
+ * @param endDate - End date
+ * @returns Array of date strings (YYYY-MM-DD format)
+ */
+export const getWorkingSaturdaysInRange = async (
+  startDate: Date,
+  endDate: Date
+): Promise<string[]> => {
+  try {
+    const startDateStr = formatDateToYYYYMMDD(startDate);
+    const endDateStr = formatDateToYYYYMMDD(endDate);
+
+    const q = query(
+      collection(db, 'saturdayLeave'),
+      where('isHoliday', '==', false),
+      where('date', '>=', startDateStr),
+      where('date', '<=', endDateStr),
+      orderBy('date', 'asc')
+    );
+
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => doc.data().date);
+  } catch (error) {
+    console.error('Error fetching working Saturdays in range:', error);
+    return [];
+  }
+};
+
+// Alias for backward compatibility
+export const getSaturdayLeave = getWorkingSaturdays;
 
 // Export constants
 export const LEAVE_REQUEST_CONSTANTS = {
@@ -292,3 +384,4 @@ export const LEAVE_REQUEST_CONSTANTS = {
   DEFAULT_LIMIT: 20,
   MIN_REASON_LENGTH: 10,
 };
+

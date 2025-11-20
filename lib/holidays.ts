@@ -1,5 +1,6 @@
 import { collection, doc, setDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from './firebase';
+import { isSaturdayWorking } from './firestore';
 
 export interface Holiday {
   id: string;
@@ -43,7 +44,6 @@ const currentYear = new Date().getFullYear();
 const defaultHolidays: Holiday[] = [
   ...generateHolidaysForYear(currentYear),
   ...generateHolidaysForYear(currentYear + 1),
-  
   // Add SRM specific holidays
   {
     id: `${currentYear}-07-15-srm-foundation-day`,
@@ -73,10 +73,10 @@ export const initializeHolidays = async (): Promise<void> => {
     // Check if holidays already exist in Firestore
     const holidaysQuery = query(collection(db, 'holidays'));
     const snapshot = await getDocs(holidaysQuery);
-    
+
     if (snapshot.empty) {
       console.log('Initializing Tamil Nadu holidays in Firestore...');
-      
+
       // Add default holidays to Firestore
       for (const holiday of defaultHolidays) {
         await setDoc(doc(db, 'holidays', holiday.id), {
@@ -87,7 +87,7 @@ export const initializeHolidays = async (): Promise<void> => {
           year: holiday.year,
         });
       }
-      
+
       console.log('Tamil Nadu holidays initialized successfully!');
     }
   } catch (error) {
@@ -102,10 +102,10 @@ export const getHolidays = async (year?: number): Promise<Holiday[]> => {
     if (holidaysCache && (now - lastFetch) < CACHE_DURATION) {
       return year ? holidaysCache.filter(h => h.date.getFullYear() === year) : holidaysCache;
     }
-    
+
     // Fetch from Firestore
     let holidaysQuery = query(collection(db, 'holidays'));
-    
+
     if (year) {
       const startOfYear = new Date(year, 0, 1);
       const endOfYear = new Date(year, 11, 31);
@@ -115,20 +115,20 @@ export const getHolidays = async (year?: number): Promise<Holiday[]> => {
         where('date', '<=', endOfYear)
       );
     }
-    
+
     const snapshot = await getDocs(holidaysQuery);
     const holidays: Holiday[] = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
       date: doc.data().date.toDate(),
     })) as Holiday[];
-    
+
     // Update cache
     if (!year) {
       holidaysCache = holidays;
       lastFetch = now;
     }
-    
+
     return holidays;
   } catch (error) {
     console.error('Error fetching holidays:', error);
@@ -137,15 +137,87 @@ export const getHolidays = async (year?: number): Promise<Holiday[]> => {
   }
 };
 
-export const isHoliday = async (date: Date): Promise<{ isHoliday: boolean; holiday?: Holiday }> => {
+/**
+ * Check if a date is a Saturday
+ */
+export const isSaturday = (date: Date): boolean => {
+  return date.getDay() === 6;
+};
+
+/**
+ * Check if a date is a Sunday
+ */
+export const isSunday = (date: Date): boolean => {
+  return date.getDay() === 0;
+};
+
+/**
+ * Check if a date is a weekend (Saturday or Sunday)
+ * NOTE: For working Saturdays, use isDateBlocked() which checks the DB
+ */
+export const isWeekend = (date: Date): boolean => {
+  const day = date.getDay();
+  return day === 0 || day === 6; // Sunday = 0, Saturday = 6
+};
+
+/**
+ * Check if a date is a holiday
+ * UPDATED: Considers working Saturdays from Firestore
+ */
+export const isHoliday = async (date: Date): Promise<{ 
+  isHoliday: boolean; 
+  holiday?: Holiday;
+  isSaturdayWorking?: boolean;
+}> => {
   try {
+    // Check if it's a working Saturday first
+    if (isSaturday(date)) {
+      const isWorking = await isSaturdayWorking(date);
+      
+      if (isWorking) {
+        // It's a working Saturday - NOT a holiday
+        return { 
+          isHoliday: false, 
+          isSaturdayWorking: true 
+        };
+      } else {
+        // It's a regular Saturday holiday
+        return { 
+          isHoliday: true, 
+          holiday: {
+            id: 'saturday',
+            name: 'Saturday',
+            date: date,
+            type: 'public',
+            isRecurring: true,
+          },
+          isSaturdayWorking: false
+        };
+      }
+    }
+
+    // Check Sundays
+    if (isSunday(date)) {
+      return { 
+        isHoliday: true, 
+        holiday: {
+          id: 'sunday',
+          name: 'Sunday',
+          date: date,
+          type: 'public',
+          isRecurring: true,
+        }
+      };
+    }
+
+    // Check public/restricted holidays
     const holidays = await getHolidays(date.getFullYear());
-    const holiday = holidays.find(h => 
-      h.date.getDate() === date.getDate() && 
+    const holiday = holidays.find(h =>
+      h.date.getDate() === date.getDate() &&
       h.date.getMonth() === date.getMonth() &&
       h.date.getFullYear() === date.getFullYear()
     );
-    
+
     return {
       isHoliday: !!holiday,
       holiday,
@@ -156,48 +228,60 @@ export const isHoliday = async (date: Date): Promise<{ isHoliday: boolean; holid
   }
 };
 
-export const isWeekend = (date: Date): boolean => {
-  const day = date.getDay();
-  return day === 0 || day === 6; // Sunday = 0, Saturday = 6
-};
-
+/**
+ * Check if a working day (not weekend, not holiday, OR a working Saturday)
+ * UPDATED: Working Saturdays count as working days
+ */
 export const isWorkingDay = async (date: Date): Promise<boolean> => {
-  if (isWeekend(date)) return false;
-  
+  // Check if it's a working Saturday
+  if (isSaturday(date)) {
+    return await isSaturdayWorking(date);
+  }
+
+  // Sundays are never working days
+  if (isSunday(date)) {
+    return false;
+  }
+
+  // Check if it's a public holiday
   const { isHoliday: isHol } = await isHoliday(date);
   return !isHol;
 };
 
+/**
+ * Get working days between two dates
+ * UPDATED: Includes working Saturdays in count
+ */
 export const getWorkingDaysBetween = async (fromDate: Date, toDate: Date): Promise<number> => {
   let workingDays = 0;
   const currentDate = new Date(fromDate);
-  
+
   // Set to start of day to avoid time issues
   currentDate.setHours(0, 0, 0, 0);
   const endDate = new Date(toDate);
   endDate.setHours(0, 0, 0, 0);
-  
+
   while (currentDate <= endDate) {
     if (await isWorkingDay(currentDate)) {
       workingDays++;
     }
     currentDate.setDate(currentDate.getDate() + 1);
   }
-  
+
   return workingDays;
 };
 
 export const addWorkingDays = async (startDate: Date, workingDaysToAdd: number): Promise<Date> => {
   const resultDate = new Date(startDate);
   let addedDays = 0;
-  
+
   while (addedDays < workingDaysToAdd) {
     resultDate.setDate(resultDate.getDate() + 1);
     if (await isWorkingDay(resultDate)) {
       addedDays++;
     }
   }
-  
+
   return resultDate;
 };
 
@@ -207,14 +291,14 @@ export const getUpcomingHolidays = async (daysAhead: number = 30): Promise<Holid
     const today = new Date();
     const futureDate = new Date();
     futureDate.setDate(today.getDate() + daysAhead);
-    
+
     const holidays = await getHolidays(today.getFullYear());
-    const nextYearHolidays = today.getFullYear() !== futureDate.getFullYear() 
-      ? await getHolidays(futureDate.getFullYear()) 
+    const nextYearHolidays = today.getFullYear() !== futureDate.getFullYear()
+      ? await getHolidays(futureDate.getFullYear())
       : [];
-    
+
     const allHolidays = [...holidays, ...nextYearHolidays];
-    
+
     return allHolidays
       .filter(h => h.date >= today && h.date <= futureDate)
       .sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -239,16 +323,16 @@ export const getHolidaysByType = async (type: 'national' | 'state' | 'university
 export const hasHolidaysInRange = async (fromDate: Date, toDate: Date): Promise<{ hasHolidays: boolean; holidays: Holiday[] }> => {
   try {
     const holidays = await getHolidays(fromDate.getFullYear());
-    const nextYearHolidays = fromDate.getFullYear() !== toDate.getFullYear() 
-      ? await getHolidays(toDate.getFullYear()) 
+    const nextYearHolidays = fromDate.getFullYear() !== toDate.getFullYear()
+      ? await getHolidays(toDate.getFullYear())
       : [];
-    
+
     const allHolidays = [...holidays, ...nextYearHolidays];
-    
-    const holidaysInRange = allHolidays.filter(h => 
+
+    const holidaysInRange = allHolidays.filter(h =>
       h.date >= fromDate && h.date <= toDate
     );
-    
+
     return {
       hasHolidays: holidaysInRange.length > 0,
       holidays: holidaysInRange,
@@ -273,31 +357,70 @@ export const HOLIDAY_TYPES = {
   PUBLIC: 'public' as const,
 };
 
-// Check if a date should be blocked for leave requests
-export const isDateBlocked = async (date: Date): Promise<{ 
-  isBlocked: boolean; 
-  reason?: string; 
-  holiday?: Holiday 
+/**
+ * Check if a date should be blocked for leave requests
+ * UPDATED: Working Saturdays are NOT blocked
+ */
+export const isDateBlocked = async (date: Date): Promise<{
+  isBlocked: boolean;
+  reason?: string;
+  holiday?: Holiday;
+  isSaturdayWorking?: boolean;
 }> => {
   try {
-    // Check if it's a weekend
-    if (isWeekend(date)) {
+    // Check if it's a working Saturday first
+    if (isSaturday(date)) {
+      const isWorking = await isSaturdayWorking(date);
+      
+      if (isWorking) {
+        // Working Saturday - NOT blocked
+        return { 
+          isBlocked: false,
+          isSaturdayWorking: true,
+          reason: 'Working Saturday - leave can be applied'
+        };
+      } else {
+        // Regular Saturday holiday - blocked
+        return { 
+          isBlocked: true,
+          reason: 'Saturday (Holiday)',
+          holiday: {
+            id: 'saturday',
+            name: 'Saturday',
+            date: date,
+            type: 'public',
+            isRecurring: true,
+          },
+          isSaturdayWorking: false
+        };
+      }
+    }
+
+    // Check if it's Sunday
+    if (isSunday(date)) {
       return {
         isBlocked: true,
-        reason: 'Weekend (Saturday/Sunday) - not allowed for leave requests'
+        reason: 'Sunday',
+        holiday: {
+          id: 'sunday',
+          name: 'Sunday',
+          date: date,
+          type: 'public',
+          isRecurring: true,
+        }
       };
     }
-    
+
     // Check if it's a holiday
     const { isHoliday: isHol, holiday } = await isHoliday(date);
     if (isHol) {
       return {
         isBlocked: true,
-        reason: `Holiday (${holiday?.name}) - not allowed for leave requests`,
+        reason: `Holiday (${holiday?.name})`,
         holiday
       };
     }
-    
+
     return { isBlocked: false };
   } catch (error) {
     console.error('Error checking if date is blocked:', error);
@@ -309,11 +432,11 @@ export const isDateBlocked = async (date: Date): Promise<{
 export const getNextWorkingDay = async (startDate: Date): Promise<Date> => {
   let nextDate = new Date(startDate);
   nextDate.setDate(nextDate.getDate() + 1);
-  
+
   while (!(await isWorkingDay(nextDate))) {
     nextDate.setDate(nextDate.getDate() + 1);
   }
-  
+
   return nextDate;
 };
 
@@ -321,22 +444,22 @@ export const getNextWorkingDay = async (startDate: Date): Promise<Date> => {
 export const getPreviousWorkingDay = async (startDate: Date): Promise<Date> => {
   let prevDate = new Date(startDate);
   prevDate.setDate(prevDate.getDate() - 1);
-  
+
   while (!(await isWorkingDay(prevDate))) {
-    prevDate.setDate(prevDate.setDate() - 1);
+    prevDate.setDate(prevDate.getDate() - 1);
   }
-  
+
   return prevDate;
 };
 
 // Get all blocked dates in a range (for calendar components)
 export const getBlockedDatesInRange = async (
-  startDate: Date, 
+  startDate: Date,
   endDate: Date
 ): Promise<Date[]> => {
   const blockedDates: Date[] = [];
   const currentDate = new Date(startDate);
-  
+
   while (currentDate <= endDate) {
     const { isBlocked } = await isDateBlocked(currentDate);
     if (isBlocked) {
@@ -344,153 +467,8 @@ export const getBlockedDatesInRange = async (
     }
     currentDate.setDate(currentDate.getDate() + 1);
   }
-  
-  return blockedDates;
-};
 
-// Check if a date range would create a "holiday sandwich" (continuous leave around holidays)
-export const checkHolidaySandwich = async (
-  fromDate: Date, 
-  toDate: Date
-): Promise<{
-  isHolidaySandwich: boolean;
-  reason?: string;
-  blockedDates?: Date[];
-}> => {
-  try {
-    // Get the date range including buffer days before and after
-    const bufferDays = 2; // Check 2 days before and after
-    const checkStartDate = new Date(fromDate);
-    checkStartDate.setDate(checkStartDate.getDate() - bufferDays);
-    
-    const checkEndDate = new Date(toDate);
-    checkEndDate.setDate(checkEndDate.getDate() + bufferDays);
-    
-    // Get all holidays in the extended range
-    const { holidays } = await hasHolidaysInRange(checkStartDate, checkEndDate);
-    
-    if (holidays.length === 0) {
-      return { isHolidaySandwich: false };
-    }
-    
-    // Check for holiday sandwiching patterns
-    const holidayDates = holidays.map(h => h.date);
-    const requestedDates: Date[] = [];
-    
-    // Generate all requested leave dates
-    const currentDate = new Date(fromDate);
-    while (currentDate <= toDate) {
-      requestedDates.push(new Date(currentDate));
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-    
-    // Check each holiday for sandwiching
-    for (const holidayDate of holidayDates) {
-      const dayBefore = new Date(holidayDate);
-      dayBefore.setDate(dayBefore.getDate() - 1);
-      
-      const dayAfter = new Date(holidayDate);
-      dayAfter.setDate(dayAfter.getDate() + 1);
-      
-      // Check if user is requesting leave on the day before AND after a holiday
-      const hasLeaveBefore = requestedDates.some(date => 
-        date.toDateString() === dayBefore.toDateString()
-      );
-      
-      const hasLeaveAfter = requestedDates.some(date => 
-        date.toDateString() === dayAfter.toDateString()
-      );
-      
-      if (hasLeaveBefore && hasLeaveAfter) {
-        const holiday = holidays.find(h => 
-          h.date.toDateString() === holidayDate.toDateString()
-        );
-        
-        return {
-          isHolidaySandwich: true,
-          reason: `Cannot take leave on both ${dayBefore.toLocaleDateString('en-GB')} and ${dayAfter.toLocaleDateString('en-GB')} as it creates continuous leave around ${holiday?.name} (${holidayDate.toLocaleDateString('en-GB')})`,
-          blockedDates: [dayBefore, dayAfter]
-        };
-      }
-      
-      // Check for extended patterns (multiple days before/after)
-      const twoDaysBefore = new Date(holidayDate);
-      twoDaysBefore.setDate(twoDaysBefore.getDate() - 2);
-      
-      const twoDaysAfter = new Date(holidayDate);
-      twoDaysAfter.setDate(twoDaysAfter.getDate() + 2);
-      
-      // Check if creating a long continuous leave (3+ days including holiday)
-      const hasExtendedLeaveBefore = requestedDates.some(date => 
-        date.toDateString() === twoDaysBefore.toDateString() || 
-        date.toDateString() === dayBefore.toDateString()
-      );
-      
-      const hasExtendedLeaveAfter = requestedDates.some(date => 
-        date.toDateString() === dayAfter.toDateString() || 
-        date.toDateString() === twoDaysAfter.toDateString()
-      );
-      
-      if (hasExtendedLeaveBefore && hasExtendedLeaveAfter) {
-        const holiday = holidays.find(h => 
-          h.date.toDateString() === holidayDate.toDateString()
-        );
-        
-        return {
-          isHolidaySandwich: true,
-          reason: `Cannot create extended continuous leave around ${holiday?.name} (${holidayDate.toLocaleDateString('en-GB')}). This would result in excessive consecutive days off.`,
-          blockedDates: [twoDaysBefore, dayBefore, dayAfter, twoDaysAfter]
-        };
-      }
-    }
-    
-    // Check for weekend sandwiching as well
-    for (const requestDate of requestedDates) {
-      const dayOfWeek = requestDate.getDay();
-      
-      // If requesting leave on Friday, check if Monday is also requested (weekend sandwich)
-      if (dayOfWeek === 5) { // Friday
-        const nextMonday = new Date(requestDate);
-        nextMonday.setDate(nextMonday.getDate() + 3); // Friday + 3 = Monday
-        
-        const hasMondayLeave = requestedDates.some(date => 
-          date.toDateString() === nextMonday.toDateString()
-        );
-        
-        if (hasMondayLeave) {
-          return {
-            isHolidaySandwich: true,
-            reason: `Cannot take leave on both Friday (${requestDate.toLocaleDateString('en-GB')}) and Monday (${nextMonday.toLocaleDateString('en-GB')}) as it creates continuous leave around the weekend`,
-            blockedDates: [requestDate, nextMonday]
-          };
-        }
-      }
-      
-      // If requesting leave on Monday, check if previous Friday is also requested
-      if (dayOfWeek === 1) { // Monday
-        const prevFriday = new Date(requestDate);
-        prevFriday.setDate(prevFriday.getDate() - 3); // Monday - 3 = Friday
-        
-        const hasFridayLeave = requestedDates.some(date => 
-          date.toDateString() === prevFriday.toDateString()
-        );
-        
-        if (hasFridayLeave) {
-          return {
-            isHolidaySandwich: true,
-            reason: `Cannot take leave on both Friday (${prevFriday.toLocaleDateString('en-GB')}) and Monday (${requestDate.toLocaleDateString('en-GB')}) as it creates continuous leave around the weekend`,
-            blockedDates: [prevFriday, requestDate]
-          };
-        }
-      }
-    }
-    
-    return { isHolidaySandwich: false };
-    
-  } catch (error) {
-    console.error('Error checking holiday sandwich:', error);
-    return { isHolidaySandwich: false };
-  }
+  return blockedDates;
 };
 
 // Enhanced validation for leave requests
@@ -505,60 +483,57 @@ export const validateLeaveRequest = async (
 }> => {
   const errors: string[] = [];
   const warnings: string[] = [];
-  
+
   try {
     // Skip validation for compensation leave (they can take leave on any day)
     if (leaveType === 'Compensation') {
       return { isValid: true, errors, warnings };
     }
-    
+
     // Check for basic date validation
     if (fromDate > toDate) {
       errors.push('From date cannot be after to date');
     }
-    
+
     // Check if dates are in the past
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
     if (fromDate < today) {
       errors.push('Cannot request leave for past dates');
     }
-    
-    // Check for holiday sandwiching
-    const sandwichCheck = await checkHolidaySandwich(fromDate, toDate);
-    if (sandwichCheck.isHolidaySandwich) {
-      errors.push(sandwichCheck.reason || 'Invalid leave pattern detected');
-    }
-    
+
     // Check if any requested dates fall on existing holidays
     const { hasHolidays, holidays } = await hasHolidaysInRange(fromDate, toDate);
     if (hasHolidays && leaveType !== 'Compensation') {
       const holidayNames = holidays.map(h => `${h.name} (${h.date.toLocaleDateString('en-GB')})`);
       warnings.push(`Your leave request includes holidays: ${holidayNames.join(', ')}. Consider adjusting your dates.`);
     }
-    
-    // Check for weekend days in the request
+
+    // Check for weekend days in the request (excluding working Saturdays)
     const currentDate = new Date(fromDate);
     const weekendDays: string[] = [];
     
     while (currentDate <= toDate) {
-      if (isWeekend(currentDate)) {
+      if (isSunday(currentDate)) {
         weekendDays.push(currentDate.toLocaleDateString('en-GB'));
+      } else if (isSaturday(currentDate)) {
+        const isWorking = await isSaturdayWorking(currentDate);
+        if (!isWorking) {
+          weekendDays.push(currentDate.toLocaleDateString('en-GB'));
+        }
       }
       currentDate.setDate(currentDate.getDate() + 1);
     }
-    
+
     if (weekendDays.length > 0 && leaveType !== 'Compensation') {
-      warnings.push(`Your leave request includes weekends: ${weekendDays.join(', ')}. These are non-working days.`);
+      warnings.push(`Your leave request includes non-working days: ${weekendDays.join(', ')}.`);
     }
-    
+
     return {
       isValid: errors.length === 0,
       errors,
       warnings
     };
-    
   } catch (error) {
     console.error('Error validating leave request:', error);
     return {
@@ -568,3 +543,4 @@ export const validateLeaveRequest = async (
     };
   }
 };
+
