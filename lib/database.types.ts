@@ -6,7 +6,7 @@ export interface Database {
           id: string;
           email: string;
           name: string;
-          role: 'Staff' | 'Director';
+          role: 'Staff' | 'Director' | 'SubAdmin';
           department: string;
           created_at: string;
         };
@@ -14,7 +14,7 @@ export interface Database {
           id: string;
           email: string;
           name: string;
-          role: 'Staff' | 'Director';
+          role: 'Staff' | 'Director' | 'SubAdmin';
           department: string;
           created_at?: string;
         };
@@ -22,7 +22,7 @@ export interface Database {
           id?: string;
           email?: string;
           name?: string;
-          role?: 'Staff' | 'Director';
+          role?: 'Staff' | 'Director' | 'SubAdmin';
           department?: string;
           created_at?: string;
         };

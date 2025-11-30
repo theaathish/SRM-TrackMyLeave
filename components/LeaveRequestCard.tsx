@@ -17,11 +17,12 @@ interface LeaveRequestCardProps {
     leaveTypeDisplay?: string;
   };
   isDirector?: boolean;
+  isSubAdmin?: boolean;
   onUpdate?: () => void;
   onOptimisticUpdate?: (requestId: string, status: 'Approved' | 'Rejected') => void;
 }
 
-function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimisticUpdate }: LeaveRequestCardProps) {
+function LeaveRequestCardComponent({ request, isDirector, isSubAdmin, onUpdate, onOptimisticUpdate }: LeaveRequestCardProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -66,7 +67,7 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
 
   // Navigate to staff detail page
   const navigateToStaffDetail = () => {
-    if (request.userId && isDirector) {
+    if (request.userId && (isDirector || isSubAdmin)) {
       router.push(`/staff/${request.userId}`);
     }
   };
@@ -274,7 +275,7 @@ function LeaveRequestCardComponent({ request, isDirector, onUpdate, onOptimistic
         <CardContent>
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              {isDirector && (
+              {(isDirector || isSubAdmin) && (
                 <TouchableOpacity 
                   style={styles.userInfoClickable}
                   onPress={navigateToStaffDetail}

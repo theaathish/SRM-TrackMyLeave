@@ -336,8 +336,8 @@ export const isSaturdayWorking = async (date: Date): Promise<boolean> => {
       return data.isHoliday === false;
     }
 
-    // Document doesn't exist = default holiday (not working)
-    return false;
+    // Document doesn't exist = default: Saturday is working
+    return true;
   } catch (error) {
     console.error('Error checking Saturday status:', error);
     return false;

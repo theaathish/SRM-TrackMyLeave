@@ -10,9 +10,14 @@ export interface Holiday {
   isRecurring: boolean;
   year?: number;
 }
+interface LocalHolidayDef {
+  date: string; // MM-DD
+  name: string;
+  type: 'national' | 'state' | 'university' | 'public';
+}
 
 // Tamil Nadu State Holidays for 2024-2025 (SRM Institute specific)
-export const LOCAL_HOLIDAYS: Holiday[] = [
+export const LOCAL_HOLIDAYS: LocalHolidayDef[] = [
   { date: '01-01', name: "New Year's Day", type: 'public' },
   { date: '01-14', name: 'Pongal', type: 'public' },
   { date: '01-15', name: 'Thiruvalluvar Day', type: 'public' },

@@ -23,7 +23,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'Staff' | 'Director';
+  role: 'Staff' | 'Director' | 'SubAdmin';
   department: string;
   employeeId?: string;
   createdAt?: any;

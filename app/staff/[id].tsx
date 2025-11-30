@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { getLeaveRequests, LeaveRequest } from '@/lib/firestore';
 import { collection, getDoc, doc } from 'firebase/firestore';
+import { getCurrentUser, updateUserProfile } from '@/lib/auth';
 import { db } from '@/lib/firebase';
 import { Users, Calendar as CalendarIcon, Clock, ChevronLeft, X } from 'lucide-react-native';
 
@@ -277,6 +279,7 @@ function StaffDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const [staff, setStaff] = useState<any>(null);
+  const [viewer, setViewer] = useState<any>(null);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('');
@@ -287,6 +290,17 @@ function StaffDetailScreen() {
   useEffect(() => {
     loadStaffAndRequests();
   }, [id]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const currentUser = await getCurrentUser();
+        setViewer(currentUser);
+      } catch (error) {
+        console.error('Error getting viewer', error);
+      }
+    })();
+  }, []);
 
   const loadStaffAndRequests = async () => {
     setLoading(true);
@@ -397,6 +411,27 @@ function StaffDetailScreen() {
             <Text style={styles.staffName}>{staff.name}</Text>
             <Text style={styles.staffDetails}>{staff.department} • ID: {staff.employeeId}</Text>
           </CardHeader>
+          {viewer?.role === 'Director' && (
+            <CardContent>
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+                <Button
+                  title={staff.role === 'SubAdmin' ? 'Revoke SubAdmin' : 'Promote to SubAdmin'}
+                  onPress={async () => {
+                    try {
+                      await updateUserProfile(staff.id, { role: staff.role === 'SubAdmin' ? 'Staff' : 'SubAdmin' });
+                      Alert.alert('Success', 'User role updated');
+                      // refresh staff data
+                      const userDoc = await getDoc(doc(db, 'users', id as string));
+                      setStaff(userDoc.exists() ? { ...userDoc.data(), id: userDoc.id } : null);
+                    } catch (err) {
+                      console.error('Error changing role', err);
+                      Alert.alert('Error', 'Failed to change role');
+                    }
+                  }}
+                />
+              </View>
+            </CardContent>
+          )}
         </Card>
 
         {/* Calendar Section - Using react-native-calendars */}

@@ -15,7 +15,7 @@ interface User {
   id: string;
   name: string;
   email: string;
-  role: 'Staff' | 'Director';
+  role: 'Staff' | 'Director' | 'SubAdmin';
   department: string;
 }
 
@@ -153,9 +153,9 @@ export default function HomeScreen() {
     });
   }, [pendingRequests, approvedRequests]);
 
-  // Director-specific stats
-  const directorStats = useMemo(() => {
-    if (user?.role !== 'Director') return null;
+  // Admin stats (Director + SubAdmin)
+  const adminStats = useMemo(() => {
+    if (!user || user.role === 'Staff') return null;
 
     return {
       totalRequests: requests.length,
@@ -175,7 +175,7 @@ export default function HomeScreen() {
 
       await loadRequests(currentUser);
 
-      if (currentUser.role === 'Director') {
+      if (currentUser.role === 'Director' || currentUser.role === 'SubAdmin') {
         Animated.parallel([
           Animated.timing(fadeAnim, {
             toValue: 1,
@@ -508,7 +508,7 @@ export default function HomeScreen() {
                     <CardContent style={styles.directorStatContent}>
                       <TrendingUp size={24} color="#3B82F6" />
                       <Text style={[styles.directorStatNumber, styles.primaryNumber]}>
-                        {directorStats?.totalRequests || 0}
+                        {adminStats?.totalRequests || 0}
                       </Text>
                       <Text style={styles.directorStatLabel}>Total Requests</Text>
                     </CardContent>
@@ -524,7 +524,7 @@ export default function HomeScreen() {
                     <CardContent style={styles.directorStatContent}>
                       <Clock size={24} color="#F59E0B" />
                       <Text style={[styles.directorStatNumber, styles.warningNumber]}>
-                        {directorStats?.pendingCount || 0}
+                        {adminStats?.pendingCount || 0}
                       </Text>
                       <Text style={styles.directorStatLabel}>Pending</Text>
                     </CardContent>
@@ -547,7 +547,7 @@ export default function HomeScreen() {
                     <CardContent style={styles.directorStatContent}>
                       <Calendar size={24} color="#10B981" />
                       <Text style={[styles.directorStatNumber, styles.successNumber]}>
-                        {directorStats?.approvedCount || 0}
+                        {adminStats?.approvedCount || 0}
                       </Text>
                       <Text style={styles.directorStatLabel}>Approved</Text>
                     </CardContent>
@@ -563,7 +563,7 @@ export default function HomeScreen() {
                     <CardContent style={styles.directorStatContent}>
                       <FileText size={24} color="#EF4444" />
                       <Text style={[styles.directorStatNumber, styles.dangerNumber]}>
-                        {directorStats?.deniedCount || 0}
+                        {adminStats?.deniedCount || 0}
                       </Text>
                       <Text style={styles.directorStatLabel}>Denied</Text>
                     </CardContent>
@@ -587,6 +587,7 @@ export default function HomeScreen() {
                     <LeaveRequestCard
                       request={item}
                       isDirector={true}
+                      isSubAdmin={user?.role === 'SubAdmin'}
                       onUpdate={onRefresh}
                       onOptimisticUpdate={handleOptimisticUpdate}
                     />
@@ -628,6 +629,7 @@ export default function HomeScreen() {
                     <LeaveRequestCard
                       request={item}
                       isDirector={true}
+                      isSubAdmin={user?.role === 'SubAdmin'}
                       onUpdate={onRefresh}
                       onOptimisticUpdate={handleOptimisticUpdate}
                     />
@@ -669,6 +671,7 @@ export default function HomeScreen() {
                     <LeaveRequestCard
                       request={item}
                       isDirector={true}
+                      isSubAdmin={user?.role === 'SubAdmin'}
                       onUpdate={onRefresh}
                       onOptimisticUpdate={handleOptimisticUpdate}
                     />
@@ -700,6 +703,217 @@ export default function HomeScreen() {
     );
   }
 
+  // SubAdmin view (shows same UI as Director but cannot approve/deny requests)
+  if (user?.role === 'SubAdmin') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Animated.View
+          style={[
+            styles.animatedContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          <ScrollView
+            ref={scrollViewRef}
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.content}
+            refreshControl={refreshControl}
+            showsVerticalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+          >
+            <View ref={containerRef} style={{ flex: 1 }}>
+              <View style={styles.directorHeader}>
+                <Text style={styles.directorWelcomeText}>SubAdmin Dashboard</Text>
+                <Text style={styles.directorSubtitle}>Welcome, {user?.name} • {user?.department}</Text>
+              </View>
+
+              <Animated.View
+                style={[
+                  styles.directorStatsContainer,
+                  { transform: [{ scale: statsScaleAnim }] },
+                ]}
+              >
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handleNavigateToSection('all-requests')}
+                  style={styles.directorStatButton}
+                >
+                  <Card style={[styles.directorStatCard, styles.primaryCard]}>
+                    <CardContent style={styles.directorStatContent}>
+                      <TrendingUp size={24} color="#3B82F6" />
+                      <Text style={[styles.directorStatNumber, styles.primaryNumber]}>
+                        {adminStats?.totalRequests || 0}
+                      </Text>
+                      <Text style={styles.directorStatLabel}>Total Requests</Text>
+                    </CardContent>
+                  </Card>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handleNavigateToSection('pending')}
+                  style={styles.directorStatButton}
+                >
+                  <Card style={[styles.directorStatCard, styles.warningCard]}>
+                    <CardContent style={styles.directorStatContent}>
+                      <Clock size={24} color="#F59E0B" />
+                      <Text style={[styles.directorStatNumber, styles.warningNumber]}>
+                        {adminStats?.pendingCount || 0}
+                      </Text>
+                      <Text style={styles.directorStatLabel}>Pending</Text>
+                    </CardContent>
+                  </Card>
+                </TouchableOpacity>
+              </Animated.View>
+
+              <Animated.View
+                style={[
+                  styles.directorStatsContainer,
+                  { transform: [{ scale: statsScaleAnim }] },
+                ]}
+              >
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handleNavigateToSection('approved')}
+                  style={styles.directorStatButton}
+                >
+                  <Card style={[styles.directorStatCard, styles.successCard]}>
+                    <CardContent style={styles.directorStatContent}>
+                      <Calendar size={24} color="#10B981" />
+                      <Text style={[styles.directorStatNumber, styles.successNumber]}>
+                        {adminStats?.approvedCount || 0}
+                      </Text>
+                      <Text style={styles.directorStatLabel}>Approved</Text>
+                    </CardContent>
+                  </Card>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handleNavigateToSection('denied')}
+                  style={styles.directorStatButton}
+                >
+                  <Card style={[styles.directorStatCard, styles.dangerCard]}>
+                    <CardContent style={styles.directorStatContent}>
+                      <FileText size={24} color="#EF4444" />
+                      <Text style={[styles.directorStatNumber, styles.dangerNumber]}>
+                        {adminStats?.deniedCount || 0}
+                      </Text>
+                      <Text style={styles.directorStatLabel}>Denied</Text>
+                    </CardContent>
+                  </Card>
+                </TouchableOpacity>
+              </Animated.View>
+
+              <View ref={pendingAnchorRef} style={styles.sectionAnchor} />
+
+              <View style={styles.directorSectionHeader}>
+                <Clock size={20} color="#F59E0B" />
+                <Text style={styles.directorSectionTitle}>Pending Requests</Text>
+              </View>
+
+              <View style={styles.directorPendingContainer}>
+                <FlatList
+                  data={pendingRequestsWithStats}
+                  keyExtractor={item => item.id}
+                  scrollEnabled={false}
+                  renderItem={({ item }) => (
+                    <LeaveRequestCard
+                      request={item}
+                      isDirector={false}
+                      isSubAdmin={true}
+                      onUpdate={onRefresh}
+                      onOptimisticUpdate={handleOptimisticUpdate}
+                    />
+                  )}
+                  ListEmptyComponent={
+                    <View style={styles.emptyStateContainer}>
+                      <Clock size={48} color="#9CA3AF" />
+                      <Text style={styles.emptyStateText}>No pending requests</Text>
+                    </View>
+                  }
+                />
+              </View>
+
+              <View ref={approvedHeaderRef} style={styles.sectionAnchor} />
+
+              <TouchableOpacity
+                style={styles.expandableHeader}
+                onPress={() => setExpanded(e => ({ ...e, approved: !e.approved }))}
+                activeOpacity={0.7}
+              >
+                <View style={styles.directorSectionHeader}>
+                  <Calendar size={20} color="#10B981" />
+                  <Text style={styles.directorSectionTitle}>Approved Requests</Text>
+                </View>
+                <Text style={styles.expandToggle}>{expanded.approved ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+
+              <View style={[styles.preRenderedSection, { display: expanded.approved ? 'flex' : 'none' }]}>
+                <FlatList
+                  data={approvedRequests}
+                  keyExtractor={item => item.id}
+                  scrollEnabled={false}
+                  renderItem={({ item }) => (
+                    <LeaveRequestCard
+                      request={item}
+                      isDirector={false}
+                      isSubAdmin={true}
+                      onUpdate={onRefresh}
+                      onOptimisticUpdate={handleOptimisticUpdate}
+                    />
+                  )}
+                  ListEmptyComponent={<View style={styles.emptyStateContainer}><Calendar size={48} color="#9CA3AF" /><Text style={styles.emptyStateText}>No approved requests</Text></View>}
+                />
+              </View>
+
+              <View ref={deniedHeaderRef} style={styles.sectionAnchor} />
+
+              <TouchableOpacity
+                style={styles.expandableHeader}
+                onPress={() => setExpanded(e => ({ ...e, denied: !e.denied }))}
+                activeOpacity={0.7}
+              >
+                <View style={styles.directorSectionHeader}>
+                  <FileText size={20} color="#EF4444" />
+                  <Text style={styles.directorSectionTitle}>Denied Requests</Text>
+                </View>
+                <Text style={styles.expandToggle}>{expanded.denied ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+
+              <View style={[styles.preRenderedSection, { display: expanded.denied ? 'flex' : 'none' }]}>
+                <FlatList
+                  data={deniedRequests}
+                  keyExtractor={item => item.id}
+                  scrollEnabled={false}
+                  renderItem={({ item }) => (
+                    <LeaveRequestCard
+                      request={item}
+                      isDirector={false}
+                      isSubAdmin={true}
+                      onUpdate={onRefresh}
+                      onOptimisticUpdate={handleOptimisticUpdate}
+                    />
+                  )}
+                  ListEmptyComponent={<View style={styles.emptyStateContainer}><FileText size={48} color="#9CA3AF" /><Text style={styles.emptyStateText}>No denied requests</Text></View>}
+                />
+              </View>
+            </View>
+          </ScrollView>
+        </Animated.View>
+        {showScrollToTop && (
+          <TouchableOpacity style={styles.scrollToTopButton} onPress={scrollToTop} activeOpacity={0.8}>
+            <View style={styles.scrollToTopContent}><ChevronUp size={24} color="#FFFFFF" /></View>
+          </TouchableOpacity>
+        )}
+      </SafeAreaView>
+    );
+  }
+
   // Staff view with fixed auto-scroll
   return (
     <SafeAreaView style={styles.container}>
@@ -716,7 +930,7 @@ export default function HomeScreen() {
         <View ref={containerRef} style={styles.content}>
           <View style={styles.header}>
             <Text style={styles.welcomeText}>Welcome, {user?.name}</Text>
-            <Text style={styles.roleText}>{user?.department} • Faculty</Text>
+            <Text style={styles.roleText}>{user?.department} {user?.role}</Text>
           </View>
 
           <View style={styles.statsContainer}>
@@ -760,9 +974,10 @@ export default function HomeScreen() {
               keyExtractor={item => item.id}
               scrollEnabled={false}
               renderItem={({ item }) => (
-                <LeaveRequestCard
-                  request={item}
-                  isDirector={false}
+                    <LeaveRequestCard
+                      request={item}
+                      isDirector={false}
+                      isSubAdmin={user?.role === 'SubAdmin'}
                   onUpdate={onRefresh}
                   onOptimisticUpdate={handleOptimisticUpdate}
                 />
@@ -798,9 +1013,10 @@ export default function HomeScreen() {
               keyExtractor={item => item.id}
               scrollEnabled={false}
               renderItem={({ item }) => (
-                <LeaveRequestCard
-                  request={item}
-                  isDirector={false}
+                    <LeaveRequestCard
+                      request={item}
+                      isDirector={false}
+                      isSubAdmin={user?.role === 'SubAdmin'}
                   onUpdate={onRefresh}
                   onOptimisticUpdate={handleOptimisticUpdate}
                 />
@@ -836,9 +1052,10 @@ export default function HomeScreen() {
               keyExtractor={item => item.id}
               scrollEnabled={false}
               renderItem={({ item }) => (
-                <LeaveRequestCard
-                  request={item}
-                  isDirector={false}
+                    <LeaveRequestCard
+                      request={item}
+                      isDirector={false}
+                      isSubAdmin={user?.role === 'SubAdmin'}
                   onUpdate={onRefresh}
                   onOptimisticUpdate={handleOptimisticUpdate}
                 />

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Tabs, useLocalSearchParams } from 'expo-router';
-import { Home, Plus, User, Users } from 'lucide-react-native';
+import { Home, Plus, User, Users, Calendar } from 'lucide-react-native';
 import { getCurrentUser } from '@/lib/auth';
 
 export default function TabLayout() {
@@ -83,7 +83,15 @@ export default function TabLayout() {
         options={{
           title: 'Faculty',
           tabBarIcon: ({ color, size }) => <Users size={size} color={color} />,
-          href: user?.role === 'Director' ? '/(tabs)/staff' : null,
+          href: user?.role === 'Director' || user?.role === 'SubAdmin' ? '/(tabs)/staff' : null,
+        }}
+      />
+      <Tabs.Screen
+        name="holidays"
+        options={{
+          title: 'Holidays',
+          tabBarIcon: ({ color, size }) => <Calendar size={size} color={color} />,
+          href: user?.role === 'SubAdmin' ? '/(tabs)/holidays' : null,
         }}
       />
       <Tabs.Screen

@@ -111,7 +111,7 @@ export default function StaffScreen() {
       const currentUser = await getCurrentUser();
       if (!currentUser) throw new Error('User not found');
 
-      if (currentUser.role !== 'Director') {
+      if (currentUser.role !== 'Director' && currentUser.role !== 'SubAdmin') {
         router.replace('/(tabs)/');
         return;
       }
