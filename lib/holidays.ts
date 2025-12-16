@@ -9,6 +9,7 @@ export interface Holiday {
   type: 'national' | 'state' | 'university' | 'public';
   isRecurring: boolean;
   year?: number;
+  campus?: string | null; // Optional: if specified, holiday applies only to that campus
 }
 interface LocalHolidayDef {
   date: string; // MM-DD
@@ -169,7 +170,7 @@ export const isWeekend = (date: Date): boolean => {
  * Check if a date is a holiday
  * UPDATED: Considers working Saturdays from Firestore
  */
-export const isHoliday = async (date: Date): Promise<{ 
+export const isHoliday = async (date: Date, campus?: string): Promise<{ 
   isHoliday: boolean; 
   holiday?: Holiday;
   isSaturdayWorking?: boolean;
@@ -177,7 +178,7 @@ export const isHoliday = async (date: Date): Promise<{
   try {
     // Check if it's a working Saturday first
     if (isSaturday(date)) {
-      const isWorking = await isSaturdayWorking(date);
+      const isWorking = await isSaturdayWorking(date, campus);
       
       if (isWorking) {
         // It's a working Saturday - NOT a holiday
@@ -195,6 +196,7 @@ export const isHoliday = async (date: Date): Promise<{
             date: date,
             type: 'public',
             isRecurring: true,
+            campus: campus || null,
           },
           isSaturdayWorking: false
         };
@@ -211,6 +213,7 @@ export const isHoliday = async (date: Date): Promise<{
           date: date,
           type: 'public',
           isRecurring: true,
+          campus: campus || null,
         }
       };
     }
@@ -220,7 +223,8 @@ export const isHoliday = async (date: Date): Promise<{
     const holiday = holidays.find(h =>
       h.date.getDate() === date.getDate() &&
       h.date.getMonth() === date.getMonth() &&
-      h.date.getFullYear() === date.getFullYear()
+      h.date.getFullYear() === date.getFullYear() &&
+      (!h.campus || (campus && h.campus === campus))
     );
 
     return {
@@ -237,10 +241,10 @@ export const isHoliday = async (date: Date): Promise<{
  * Check if a working day (not weekend, not holiday, OR a working Saturday)
  * UPDATED: Working Saturdays count as working days
  */
-export const isWorkingDay = async (date: Date): Promise<boolean> => {
+export const isWorkingDay = async (date: Date, campus?: string): Promise<boolean> => {
   // Check if it's a working Saturday
   if (isSaturday(date)) {
-    return await isSaturdayWorking(date);
+    return await isSaturdayWorking(date, campus);
   }
 
   // Sundays are never working days
@@ -249,7 +253,7 @@ export const isWorkingDay = async (date: Date): Promise<boolean> => {
   }
 
   // Check if it's a public holiday
-  const { isHoliday: isHol } = await isHoliday(date);
+  const { isHoliday: isHol } = await isHoliday(date, campus);
   return !isHol;
 };
 
@@ -257,7 +261,7 @@ export const isWorkingDay = async (date: Date): Promise<boolean> => {
  * Get working days between two dates
  * UPDATED: Includes working Saturdays in count
  */
-export const getWorkingDaysBetween = async (fromDate: Date, toDate: Date): Promise<number> => {
+export const getWorkingDaysBetween = async (fromDate: Date, toDate: Date, campus?: string): Promise<number> => {
   let workingDays = 0;
   const currentDate = new Date(fromDate);
 
@@ -267,7 +271,7 @@ export const getWorkingDaysBetween = async (fromDate: Date, toDate: Date): Promi
   endDate.setHours(0, 0, 0, 0);
 
   while (currentDate <= endDate) {
-    if (await isWorkingDay(currentDate)) {
+    if (await isWorkingDay(currentDate, campus)) {
       workingDays++;
     }
     currentDate.setDate(currentDate.getDate() + 1);
@@ -325,7 +329,7 @@ export const getHolidaysByType = async (type: 'national' | 'state' | 'university
 };
 
 // Check if a date range contains any holidays
-export const hasHolidaysInRange = async (fromDate: Date, toDate: Date): Promise<{ hasHolidays: boolean; holidays: Holiday[] }> => {
+export const hasHolidaysInRange = async (fromDate: Date, toDate: Date, campus?: string): Promise<{ hasHolidays: boolean; holidays: Holiday[] }> => {
   try {
     const holidays = await getHolidays(fromDate.getFullYear());
     const nextYearHolidays = fromDate.getFullYear() !== toDate.getFullYear()
@@ -335,7 +339,7 @@ export const hasHolidaysInRange = async (fromDate: Date, toDate: Date): Promise<
     const allHolidays = [...holidays, ...nextYearHolidays];
 
     const holidaysInRange = allHolidays.filter(h =>
-      h.date >= fromDate && h.date <= toDate
+      h.date >= fromDate && h.date <= toDate && (!h.campus || (campus && h.campus === campus))
     );
 
     return {
@@ -366,7 +370,7 @@ export const HOLIDAY_TYPES = {
  * Check if a date should be blocked for leave requests
  * UPDATED: Working Saturdays are NOT blocked
  */
-export const isDateBlocked = async (date: Date): Promise<{
+export const isDateBlocked = async (date: Date, campus?: string): Promise<{
   isBlocked: boolean;
   reason?: string;
   holiday?: Holiday;
@@ -375,7 +379,7 @@ export const isDateBlocked = async (date: Date): Promise<{
   try {
     // Check if it's a working Saturday first
     if (isSaturday(date)) {
-      const isWorking = await isSaturdayWorking(date);
+      const isWorking = await isSaturdayWorking(date, campus);
       
       if (isWorking) {
         // Working Saturday - NOT blocked
@@ -395,6 +399,7 @@ export const isDateBlocked = async (date: Date): Promise<{
             date: date,
             type: 'public',
             isRecurring: true,
+            campus: campus || null,
           },
           isSaturdayWorking: false
         };
@@ -412,12 +417,13 @@ export const isDateBlocked = async (date: Date): Promise<{
           date: date,
           type: 'public',
           isRecurring: true,
+          campus: campus || null,
         }
       };
     }
 
     // Check if it's a holiday
-    const { isHoliday: isHol, holiday } = await isHoliday(date);
+    const { isHoliday: isHol, holiday } = await isHoliday(date, campus);
     if (isHol) {
       return {
         isBlocked: true,
@@ -460,13 +466,14 @@ export const getPreviousWorkingDay = async (startDate: Date): Promise<Date> => {
 // Get all blocked dates in a range (for calendar components)
 export const getBlockedDatesInRange = async (
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  campus?: string
 ): Promise<Date[]> => {
   const blockedDates: Date[] = [];
   const currentDate = new Date(startDate);
 
   while (currentDate <= endDate) {
-    const { isBlocked } = await isDateBlocked(currentDate);
+    const { isBlocked } = await isDateBlocked(currentDate, campus);
     if (isBlocked) {
       blockedDates.push(new Date(currentDate));
     }
@@ -480,7 +487,8 @@ export const getBlockedDatesInRange = async (
 export const validateLeaveRequest = async (
   fromDate: Date,
   toDate: Date,
-  leaveType: string
+  leaveType: string,
+  campus?: string
 ): Promise<{
   isValid: boolean;
   errors: string[];
@@ -510,8 +518,10 @@ export const validateLeaveRequest = async (
     // Check if any requested dates fall on existing holidays
     const { hasHolidays, holidays } = await hasHolidaysInRange(fromDate, toDate);
     if (hasHolidays && leaveType !== 'Compensation') {
-      const holidayNames = holidays.map(h => `${h.name} (${h.date.toLocaleDateString('en-GB')})`);
-      warnings.push(`Your leave request includes holidays: ${holidayNames.join(', ')}. Consider adjusting your dates.`);
+      const holidayNames = holidays.filter(h => !h.campus || (campus && h.campus === campus)).map(h => `${h.name} (${h.date.toLocaleDateString('en-GB')})`);
+      if (holidayNames.length > 0) {
+        warnings.push(`Your leave request includes holidays: ${holidayNames.join(', ')}. Consider adjusting your dates.`);
+      }
     }
 
     // Check for weekend days in the request (excluding working Saturdays)
@@ -522,7 +532,7 @@ export const validateLeaveRequest = async (
       if (isSunday(currentDate)) {
         weekendDays.push(currentDate.toLocaleDateString('en-GB'));
       } else if (isSaturday(currentDate)) {
-        const isWorking = await isSaturdayWorking(currentDate);
+        const isWorking = await isSaturdayWorking(currentDate, campus);
         if (!isWorking) {
           weekendDays.push(currentDate.toLocaleDateString('en-GB'));
         }

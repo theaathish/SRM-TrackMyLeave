@@ -6,6 +6,7 @@ import {
   updatePassword,
   reauthenticateWithCredential,
   EmailAuthProvider,
+  sendPasswordResetEmail,
   User as FirebaseUser
 } from 'firebase/auth';
 import {
@@ -26,6 +27,7 @@ export interface User {
   role: 'Staff' | 'Director' | 'SubAdmin';
   department: string;
   employeeId?: string;
+  campus?: 'TRP' | 'RMP';
   createdAt?: any;
   updatedAt?: any;
   lastLoginAt?: Date;
@@ -61,7 +63,8 @@ export const signUp = async (
   password: string,
   name: string,
   department?: string,
-  employeeId?: string
+  employeeId?: string,
+  campus?: 'TRP' | 'RMP'
 ): Promise<User> => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -72,6 +75,7 @@ export const signUp = async (
       role: 'Staff',
       department: department || '',
       employeeId: employeeId || '',
+      campus: campus || undefined,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       biometricEnabled: true,
@@ -230,5 +234,15 @@ export const changePassword = async (
     }
 
     return { success: false, message };
+  }
+};
+
+export const sendPasswordReset = async (email: string): Promise<{ success: boolean; message?: string }> => {
+  try {
+    await sendPasswordResetEmail(auth, email);
+    return { success: true, message: 'Password reset email sent' };
+  } catch (error: any) {
+    console.error('Error sending password reset:', error);
+    return { success: false, message: error.message || 'Failed to send password reset email' };
   }
 };

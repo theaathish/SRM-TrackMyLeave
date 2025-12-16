@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Alert, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Animated, ScrollView } from 'react-native';
+import { View, Text, Alert, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Animated, ScrollView, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Picker } from '@/components/ui/Picker';
-import { signIn, signUp, getCurrentUser } from '@/lib/auth';
+import { signIn, signUp, getCurrentUser, sendPasswordReset } from '@/lib/auth';
 import { Mail, Lock, User, LogIn, UserPlus, Building, Shield, GraduationCap } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -46,6 +46,11 @@ const departmentOptions = [
   { label: 'Research', value: 'Research' },
 ].sort((a, b) => a.label.localeCompare(b.label));
 
+const campusOptions = [
+  { label: 'TRP', value: 'TRP' },
+  { label: 'RMP', value: 'RMP' },
+];
+
 export default function AuthScreen() {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -58,7 +63,11 @@ export default function AuthScreen() {
     department: '',
     confirmPassword: '',
     employeeId: '',
+    campus: '',
   });
+
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
 
   useEffect(() => {
     checkAuthState();
@@ -141,6 +150,11 @@ export default function AuthScreen() {
         return false;
       }
 
+      if (!formData.campus) {
+        Alert.alert('Error', 'Please select your campus');
+        return false;
+      }
+
       if (!formData.confirmPassword.trim()) {
         Alert.alert('Error', 'Please confirm your password');
         return false;
@@ -169,7 +183,7 @@ export default function AuthScreen() {
         router.replace('/(tabs)/');
       } else {
         // Signup flow
-        const user = await signUp(formData.email.trim().toLowerCase(), formData.password, formData.name.trim(), formData.department.trim(), formData.employeeId.trim());
+        const user = await signUp(formData.email.trim().toLowerCase(), formData.password, formData.name.trim(), formData.department.trim(), formData.employeeId.trim(), formData.campus as 'TRP' | 'RMP');
         console.log('Signup successful:', user);
         
         Alert.alert(
@@ -230,6 +244,7 @@ export default function AuthScreen() {
       department: '',
       confirmPassword: '',
       employeeId: '',
+      campus: '',
     });
   };
 
@@ -311,6 +326,14 @@ export default function AuthScreen() {
                         onValueChange={(value) => setFormData(prev => ({ ...prev, department: value }))}
                         containerStyle={styles.inputContainer}
                       />
+
+                      <Picker
+                        label="Campus"
+                        options={campusOptions}
+                        value={formData.campus}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, campus: value }))}
+                        containerStyle={styles.inputContainer}
+                      />
                     </>
                   )}
 
@@ -335,6 +358,19 @@ export default function AuthScreen() {
                     containerStyle={styles.inputContainer}
                   />
 
+                  {isLogin && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setResetEmail(formData.email || '');
+                        setShowResetModal(true);
+                      }}
+                      style={{ alignSelf: 'flex-end', marginTop: 8 }}
+                      disabled={loading}
+                    >
+                      <Text style={{ color: '#2563EB', fontWeight: '600' }}>Forgot Password?</Text>
+                    </TouchableOpacity>
+                  )}
+
                   {!isLogin && (
                     <Input
                       label="Confirm Password"
@@ -355,6 +391,57 @@ export default function AuthScreen() {
                     icon={isLogin ? <LogIn size={20} color="white" /> : <UserPlus size={20} color="white" />}
                     style={styles.submitButton}
                   />
+
+                  <Modal
+                    visible={showResetModal}
+                    transparent
+                    animationType="slide"
+                    onRequestClose={() => setShowResetModal(false)}
+                  >
+                    <SafeAreaView style={{ flex: 1, justifyContent: 'center', padding: 24 }}>
+                      <Card style={{ padding: 16 }}>
+                        <CardHeader>
+                          <Text style={{ fontSize: 18, fontWeight: '700' }}>Reset Password</Text>
+                          <Text style={{ color: '#6B7280', marginTop: 4 }}>Enter your registered email to receive a reset link</Text>
+                        </CardHeader>
+                        <CardContent>
+                          <Input
+                            label="Email Address"
+                            value={resetEmail}
+                            onChangeText={setResetEmail}
+                            placeholder="Enter your email"
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                            icon={<Mail size={20} color="#6B7280" />}
+                            containerStyle={{ marginBottom: 8 }}
+                          />
+
+                          <Button
+                            title="Send Reset Link"
+                            onPress={async () => {
+                              if (!resetEmail.trim()) return Alert.alert('Error', 'Please enter an email');
+                              try {
+                                setShowResetModal(false);
+                                const res = await sendPasswordReset(resetEmail.trim().toLowerCase());
+                                if (res.success) {
+                                  Alert.alert('Success', 'Password reset email sent. Check your inbox');
+                                } else {
+                                  Alert.alert('Error', res.message || 'Failed to send reset email');
+                                }
+                              } catch (err) {
+                                console.error('Reset error', err);
+                                Alert.alert('Error', 'Failed to send reset email');
+                              }
+                            }}
+                          />
+
+                          <TouchableOpacity onPress={() => setShowResetModal(false)} style={{ marginTop: 12 }}>
+                            <Text style={{ color: '#374151', textAlign: 'center' }}>Cancel</Text>
+                          </TouchableOpacity>
+                        </CardContent>
+                      </Card>
+                    </SafeAreaView>
+                  </Modal>
 
                   <TouchableOpacity
                     onPress={toggleMode}

@@ -314,7 +314,7 @@ export default function SubmitLeaveScreen() {
       }
 
       // Check date range conflicts for Leave, Permission, and On Duty
-      const rangeConflict = hasDateRangeConflict(formData.fromDate, formData.toDate);
+      const rangeConflict = hasDateRangeConflict(formData.fromDate!, formData.toDate ?? undefined);
       if (rangeConflict.hasConflict) {
         const conflictingDatesStr = rangeConflict.conflictingDates
           .map(date => date.toLocaleDateString('en-GB'))
@@ -391,7 +391,7 @@ export default function SubmitLeaveScreen() {
         const fromDate = formData.fromDate!;
         const toDate = formData.toDate || formData.fromDate!;
 
-        const validation = await validateLeaveRequest(fromDate, toDate, formData.leaveType);
+        const validation = await validateLeaveRequest(fromDate, toDate, formData.leaveType, user?.campus);
 
         if (!validation.isValid) {
           Alert.alert(

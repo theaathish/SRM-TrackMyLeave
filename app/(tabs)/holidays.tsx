@@ -36,7 +36,7 @@ export default function HolidaysPage() {
         <Text style={styles.title}>Holidays Management</Text>
         <Text style={styles.subtitle}>Add / edit / delete public holidays and manage working Saturdays</Text>
       </View>
-      <HolidaysManager />
+      <HolidaysManager user={user} />
     </SafeAreaView>
   );
 }

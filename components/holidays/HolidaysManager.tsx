@@ -13,7 +13,7 @@ interface SaturdayLeave {
   isHoliday: boolean;
 }
 
-export default function HolidaysManager() {
+export default function HolidaysManager({ user }: { user?: any }) {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [newHoliday, setNewHoliday] = useState({
@@ -76,7 +76,9 @@ export default function HolidaysManager() {
   const loadHolidays = async () => {
     try {
       const result = await getHolidays();
-      setHolidays(result);
+      // Only show holidays that are global or belong to this user's campus
+      const filtered = result.filter(h => !h.campus || (user && h.campus === user.campus));
+      setHolidays(filtered);
     } catch (error) {
       console.error('Unable to load holidays', error);
       throw error;
@@ -85,7 +87,7 @@ export default function HolidaysManager() {
 
   const loadSaturdays = async () => {
     try {
-      const list = await HolidaysAdmin.listSaturdayLeaves();
+      const list = await HolidaysAdmin.listSaturdayLeaves(user?.campus);
       setSaturdays(list);
     } catch (error) {
       console.error('Error loading Saturdays', error);
@@ -104,6 +106,7 @@ export default function HolidaysManager() {
         type: newHoliday.type,
         isRecurring: newHoliday.isRecurring,
         year: newHoliday.date.getFullYear(),
+        campus: user?.campus || null,
       });
       Alert.alert('Success', 'Holiday added successfully');
       setNewHoliday({ name: '', date: new Date(), type: 'public', isRecurring: true });
@@ -141,9 +144,9 @@ export default function HolidaysManager() {
   const handleToggleSaturday = async (dateStr: string, isHoliday: boolean) => {
     try {
       if (isHoliday) {
-        await HolidaysAdmin.removeSaturdayConfig(dateStr);
+        await HolidaysAdmin.removeSaturdayConfig(dateStr, user?.campus);
       } else {
-        await HolidaysAdmin.setSaturdayWorking(dateStr, false);
+        await HolidaysAdmin.setSaturdayWorking(dateStr, false, user?.campus);
       }
       await loadSaturdays();
     } catch (error) {
@@ -162,7 +165,7 @@ export default function HolidaysManager() {
       }
       
       const dateStr = newSaturdayDate.toISOString().split('T')[0];
-      await HolidaysAdmin.setSaturdayWorking(dateStr, false);
+      await HolidaysAdmin.setSaturdayWorking(dateStr, false, user?.campus);
       Alert.alert('Success', 'Saturday marked as holiday');
       setNewSaturdayDate(null);
       await loadSaturdays();

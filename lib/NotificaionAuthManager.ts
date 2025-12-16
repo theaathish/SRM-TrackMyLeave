@@ -1,7 +1,7 @@
 // tokenManager.ts
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from './firebase';
-import serviceAccount from "../leavemanagersrm-firebase-adminsdk-fbsvc-7c8640704f.json";
+import serviceAccount from "../leavemanagersrm-firebase-adminsdk-fbsvc-bbcac414e7.json";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SCOPES = ["https://www.googleapis.com/auth/firebase.messaging"];

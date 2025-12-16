@@ -6,7 +6,7 @@ import { Holiday } from './holidays';
 /**
  * Create a new holiday in Firestore
  */
-export const createHoliday = async (holiday: Omit<Holiday, 'id'> & { id?: string }): Promise<string> => {
+export const createHoliday = async (holiday: Omit<Holiday, 'id'> & { id?: string; campus?: string }): Promise<string> => {
   try {
     const id = holiday.id || `${holiday.year}-${holiday.name.replace(/\s+/g, '-').toLowerCase()}`;
     await setDoc(doc(db, 'holidays', id), {
@@ -15,6 +15,7 @@ export const createHoliday = async (holiday: Omit<Holiday, 'id'> & { id?: string
       type: holiday.type,
       isRecurring: holiday.isRecurring,
       year: holiday.year,
+      campus: holiday.campus || null,
     });
     clearHolidaysCache();
     return id;
@@ -48,11 +49,14 @@ export const deleteHoliday = async (id: string) => {
 };
 
 // Manage working Saturdays using `saturdayLeave` collection
-export const setSaturdayWorking = async (dateStr: string, isWorking: boolean) => {
+export const setSaturdayWorking = async (dateStr: string, isWorking: boolean, campus?: string) => {
   try {
-    await setDoc(doc(db, 'saturdayLeave', dateStr), {
+    // New docs are namespaced by campus to make saturday settings campus-specific
+    const id = campus ? `${dateStr}_${campus}` : dateStr;
+    await setDoc(doc(db, 'saturdayLeave', id), {
       date: dateStr,
       isHoliday: !isWorking,
+      campus: campus || null,
     });
   } catch (error) {
     console.error('Error setting Saturday working:', error);
@@ -60,9 +64,10 @@ export const setSaturdayWorking = async (dateStr: string, isWorking: boolean) =>
   }
 };
 
-export const removeSaturdayConfig = async (dateStr: string) => {
+export const removeSaturdayConfig = async (dateStr: string, campus?: string) => {
   try {
-    await deleteDoc(doc(db, 'saturdayLeave', dateStr));
+    const id = campus ? `${dateStr}_${campus}` : dateStr;
+    await deleteDoc(doc(db, 'saturdayLeave', id));
   } catch (error) {
     console.error('Error removing Saturday config:', error);
     throw error;
@@ -80,11 +85,16 @@ export const listAllHolidays = async () => {
   }
 };
 
-export const listSaturdayLeaves = async () => {
+export const listSaturdayLeaves = async (campus?: string) => {
   try {
     const q = query(collection(db, 'saturdayLeave'));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    const all = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+    // Filter to campus specific entries or legacy entries without campus
+    return all.filter(item => {
+      if (!campus) return !item.campus;
+      return (item.campus === campus) || (!item.campus);
+    });
   } catch (error) {
     console.error('Error listing saturdayLeave entries:', error);
     return [];

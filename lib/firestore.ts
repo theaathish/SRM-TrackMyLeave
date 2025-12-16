@@ -295,16 +295,18 @@ const formatDateToYYYYMMDD = (date: Date): string => {
  * Get all working Saturdays from Firestore
  * @returns Array of date strings (YYYY-MM-DD format)
  */
-export const getWorkingSaturdays = async (): Promise<string[]> => {
+export const getWorkingSaturdays = async (campus?: string): Promise<string[]> => {
   try {
-    const q = query(
-      collection(db, 'saturdayLeave'),
-      where('isHoliday', '==', false),
-      orderBy('date', 'asc')
-    );
-
+    // Fetch all saturday configs and filter client-side for campus (including legacy docs without campus)
+    const q = query(collection(db, 'saturdayLeave'));
     const querySnapshot = await getDocs(q);
-    const workingSaturdays = querySnapshot.docs.map(doc => doc.data().date);
+    const all = querySnapshot.docs.map(d => d.data()) as any[];
+    const filtered = all.filter(item => {
+      if (campus) return (item.campus === campus) || (!item.campus);
+      return !item.campus;
+    }).filter(item => item.isHoliday === false);
+
+    const workingSaturdays = filtered.map(item => item.date);
 
     console.log(`Found ${workingSaturdays.length} working Saturdays`);
     return workingSaturdays;
@@ -319,7 +321,7 @@ export const getWorkingSaturdays = async (): Promise<string[]> => {
  * @param date - Date to check
  * @returns true if it's a working Saturday, false otherwise
  */
-export const isSaturdayWorking = async (date: Date): Promise<boolean> => {
+export const isSaturdayWorking = async (date: Date, campus?: string): Promise<boolean> => {
   try {
     // Check if it's actually a Saturday
     if (date.getDay() !== 6) {
@@ -327,7 +329,17 @@ export const isSaturdayWorking = async (date: Date): Promise<boolean> => {
     }
 
     const dateStr = formatDateToYYYYMMDD(date);
-    
+    // Try campus-specific doc first
+    if (campus) {
+      const campusDocRef = doc(db, 'saturdayLeave', `${dateStr}_${campus}`);
+      const campusSnap = await getDoc(campusDocRef);
+      if (campusSnap.exists()) {
+        const data = campusSnap.data();
+        return data.isHoliday === false;
+      }
+    }
+
+    // Fallback to legacy document without campus
     const docRef = doc(db, 'saturdayLeave', dateStr);
     const docSnap = await getDoc(docRef);
 
@@ -352,22 +364,23 @@ export const isSaturdayWorking = async (date: Date): Promise<boolean> => {
  */
 export const getWorkingSaturdaysInRange = async (
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  campus?: string
 ): Promise<string[]> => {
   try {
     const startDateStr = formatDateToYYYYMMDD(startDate);
     const endDateStr = formatDateToYYYYMMDD(endDate);
 
-    const q = query(
-      collection(db, 'saturdayLeave'),
-      where('isHoliday', '==', false),
-      where('date', '>=', startDateStr),
-      where('date', '<=', endDateStr),
-      orderBy('date', 'asc')
-    );
-
+    // Fetch all and filter client side for campus constraints
+    const q = query(collection(db, 'saturdayLeave'));
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => doc.data().date);
+    const all = querySnapshot.docs.map(d => d.data()) as any[];
+    const filtered = all.filter(item => {
+      if (campus) return (item.campus === campus) || (!item.campus);
+      return !item.campus;
+    }).filter(item => item.isHoliday === false && item.date >= startDateStr && item.date <= endDateStr);
+
+    return filtered.map(item => item.date);
   } catch (error) {
     console.error('Error fetching working Saturdays in range:', error);
     return [];

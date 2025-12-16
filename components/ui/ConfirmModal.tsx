@@ -10,6 +10,7 @@ interface ConfirmModalProps {
   onConfirm: () => void;
   onCancel: () => void;
   children?: React.ReactNode; // Add children prop
+  disabled?: boolean;
 }
 
 export default function ConfirmModal({
@@ -21,6 +22,7 @@ export default function ConfirmModal({
   onConfirm,
   onCancel,
   children, // Add children
+  disabled = false,
 }: ConfirmModalProps) {
   return (
     <Modal
@@ -41,7 +43,7 @@ export default function ConfirmModal({
             <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
               <Text style={styles.cancelText}>{cancelText}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.confirmButton} onPress={onConfirm}>
+            <TouchableOpacity disabled={disabled} style={[styles.confirmButton, disabled && styles.disabledConfirmButton]} onPress={onConfirm}>
               <Text style={styles.confirmText}>{confirmText}</Text>
             </TouchableOpacity>
           </View>
@@ -100,6 +102,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 6,
     backgroundColor: '#3B82F6', // Changed to blue for password change
+  },
+  disabledConfirmButton: {
+    opacity: 0.6,
+    backgroundColor: '#94A3B8',
   },
   cancelText: {
     color: '#374151',

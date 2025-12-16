@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Picker } from '@/components/ui/Picker';
 import { getCurrentUser, signOut, updateUserProfile, updateUserEmployeeId } from '@/lib/auth';
+import type { User as AppUser } from '@/lib/auth';
 import { User, Mail, Building, Shield, LogOut, Edit, Save, X, Key } from 'lucide-react-native';
 import * as SecureStore from 'expo-secure-store';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -60,7 +61,7 @@ const roleOptions = [
 ];
 
 export default function ProfileScreen() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -71,6 +72,7 @@ export default function ProfileScreen() {
     department: '',
     role: '',
     employeeId: '',
+    campus: '',
   });
   const [biometricInfo, setBiometricInfo] = useState('');
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -87,6 +89,21 @@ export default function ProfileScreen() {
     loadBiometricInfo();
   }, []);
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Loading...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>User not found</Text>
+      </SafeAreaView>
+    );
+  }
   const loadUserData = async () => {
     try {
       const currentUser = await getCurrentUser();
@@ -98,6 +115,7 @@ export default function ProfileScreen() {
           department: currentUser.department || '',
           role: currentUser.role || 'Staff',
           employeeId: currentUser.employeeId || '',
+          campus: currentUser.campus || '',
         });
         setEmpIdEditable(!currentUser.employeeId);
       } else {
@@ -205,6 +223,11 @@ export default function ProfileScreen() {
       return;
     }
 
+    if (!editData.campus) {
+      Alert.alert('Error', 'Campus is required');
+      return;
+    }
+
     if (empIdEditable && !editData.employeeId.trim()) {
       Alert.alert('Error', 'Employee ID is required');
       return;
@@ -214,6 +237,7 @@ export default function ProfileScreen() {
     try {
       const updates = {
         name: editData.name.trim(),
+        campus: editData.campus as 'TRP' | 'RMP',
         ...(user.role === 'Staff' && { department: editData.department }),
         ...(user.role === 'Director' && {
           email: editData.email.trim(),
@@ -228,7 +252,7 @@ export default function ProfileScreen() {
         setEmpIdEditable(false);
       }
 
-      await updateUserProfile(user.id, updates);
+      await updateUserProfile(user.id, updates as Partial<AppUser>);
       setUser((prev: any) => ({ ...prev, ...updates }));
       setIsEditing(false);
       Alert.alert('Success', 'Profile updated successfully');
@@ -247,6 +271,7 @@ export default function ProfileScreen() {
       department: user.department || '',
       role: user.role || 'Staff',
       employeeId: user.employeeId || '',
+      campus: user.campus || '',
     });
     setIsEditing(false);
   };
@@ -418,7 +443,7 @@ export default function ProfileScreen() {
                     <Text style={styles.infoLabel}>Department</Text>
                     {isEditing ? (
                       <Picker
-                        selectedValue={editData.department}
+                        value={editData.department}
                         onValueChange={(value) => setEditData(prev => ({ ...prev, department: value }))}
                         options={departmentOptions}
                       />
@@ -428,6 +453,22 @@ export default function ProfileScreen() {
                   </View>
                 </View>
               )}
+
+              <View style={styles.infoRow}>
+                <Building size={20} color="#6B7280" />
+                <View style={styles.infoText}>
+                  <Text style={styles.infoLabel}>Campus</Text>
+                  {isEditing ? (
+                    <Picker
+                      value={editData.campus}
+                      onValueChange={(value) => setEditData(prev => ({ ...prev, campus: value }))}
+                      options={[{ label: 'TRP', value: 'TRP' }, { label: 'RMP', value: 'RMP' }]}
+                    />
+                  ) : (
+                    <Text style={styles.infoValue}>{user.campus || 'Not set'}</Text>
+                  )}
+                </View>
+              </View>
 
               <View style={styles.infoRow}>
                 <Shield size={20} color="#6B7280" />
@@ -513,7 +554,7 @@ export default function ProfileScreen() {
             <View style={styles.actionsContainer}>
               <Button
                 onPress={handleCancelEdit}
-                variant="outline"
+                variant="secondary"
                 icon={<X size={16} color="#6B7280" />}
                 title="Cancel"
               />

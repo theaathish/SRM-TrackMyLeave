@@ -21,7 +21,9 @@
     "clean:all": "rm -rf android ios .expo node_modules/.cache",
     "android:keystore": "cd android/app && keytool -genkeypair -v -keystore release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias trackmyleave",
     "build:eas:apk": "eas build --platform android --profile production-apk",
-    "build:eas:aab": "eas build --platform android --profile production"
+    "build:eas:aab": "eas build --platform android --profile production",
+    "apply-campus-mapping:dry": "node ./scripts/apply_campus_mapping.js --csv ./scripts/sample_campus_map.csv",
+    "apply-campus-mapping:update": "node ./scripts/apply_campus_mapping.js --csv ./scripts/sample_campus_map.csv --update"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",

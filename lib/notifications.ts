@@ -220,6 +220,11 @@ export const stopRealtimeListener = (): void => {
   stopSnapshot = null;
 };
 
+// Legacy helper used by other modules to stop any background notification listeners
+export const stopBackgroundNotificationListener = (): void => {
+  stopRealtimeListener();
+};
+
 /* ───────────── Background task ─────────── */
 TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ error }) => {
   if (error) {
