@@ -2,7 +2,7 @@
   "expo": {
     "name": "TrackMyLeave",
     "slug": "trackmyleave",
-    "version": "1.0.6",
+    "version": "1.1.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -29,9 +29,16 @@
           ],
           "defaultChannel": "default"
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-build-properties",
+      "expo-font",
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "ios": {
+      "newArchEnabled": false,
       "supportsTablet": true,
       "infoPlist": {
         "NSFaceIDUsageDescription": "Use Face ID to unlock the app securely."
@@ -39,6 +46,7 @@
       "bundleIdentifier": "com.srmrearch.leavemanager"
     },
     "android": {
+      "newArchEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
@@ -49,12 +57,14 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE"
       ],
-      "package": "com.srmrearch.leavemanager"
+      "package": "com.srmrearch.leavemanager",
+      "versionCode": 21
     },
+    "updates": {
+      "url": "https://u.expo.dev/af4bec31-9cb2-4ead-a81e-3e706ed14794"
+    },
+    "runtimeVersion": "1.1.1",
     "extra": {
-      "eas": {
-        "projectId": "af4bec31-9cb2-4ead-a81e-3e706ed14794"
-      },
       "firebase": {
         "apiKey": "AIzaSyCHKewsoykpqi6CtfJk4PTaI5ZGZneJuUM",
         "authDomain": "leavemanagersrm.firebaseapp.com",
@@ -62,7 +72,11 @@
         "storageBucket": "leavemanagersrm.firebasestorage.app",
         "messagingSenderId": "7588322507",
         "appId": "1:7588322507:web:ca2157cd7f87f18cf44f4e"
+      },
+      "eas": {
+        "projectId": "8216c888-71af-47a6-a26c-aea908db01ee"
       }
-    }
+    },
+    "owner": "dellano_srm"
   }
 }

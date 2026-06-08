@@ -92,8 +92,8 @@ android {
         applicationId 'com.srmrearch.leavemanager'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 21
-        versionName "1.1.1"
+        versionCode 22
+        versionName "1.1.2"
     }
     signingConfigs {
         debug {

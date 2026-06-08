@@ -1,11 +1,13 @@
 import Constants from 'expo-constants';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { initializeAuth, getAuth, getReactNativePersistence, type Auth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { initializeApp as InitRNF } from '@react-native-firebase/app';
+
+// Check if we are in Expo Go
+const isExpoGo = Constants.appOwnership === 'expo';
 
 // Firebase config (from env or app.json)
 const firebaseConfig = {
@@ -28,16 +30,19 @@ console.log('Firebase Config:', {
   databaseURL: firebaseConfig.databaseURL ? 'SET' : 'NOT SET',
 });
 
-// 🔥 Initialize Firebase & Setup Notifications
-InitRNF(firebaseConfig)
-  .then(() => {console.log("intilized fire message")})
-  .catch(err => console.log("\x1b[31mNotification Error:\x1b[0m", err));
+let app: any;
+let auth: Auth;
+let db: any;
+let storage: any;
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+if (getApps().length === 0) {
+  app = initializeApp(firebaseConfig);
+} else {
+  app = getApp();
+}
 
-// Initialize Auth with AsyncStorage persistence for auto-login
-let auth: Auth;
+// Initialize Auth
 if (Platform.OS !== 'web') {
   auth = initializeAuth(app, {
     persistence: getReactNativePersistence(AsyncStorage),
@@ -45,12 +50,22 @@ if (Platform.OS !== 'web') {
 } else {
   auth = getAuth(app);
 }
-export { auth };
 
-// Initialize Firestore
-export const db = getFirestore(app);
+// Initialize Firestore & Storage
+db = getFirestore(app);
+storage = getStorage(app);
 
-// Initialize Storage
-export const storage = getStorage(app);
+// Only initialize Native Firebase if NOT in Expo Go
+if (!isExpoGo) {
+  try {
+    const { initializeApp: InitRNF } = require('@react-native-firebase/app');
+    InitRNF(firebaseConfig)
+      .then(() => {console.log("intilized fire message")})
+      .catch((err: any) => console.log("\x1b[31mNotification Error:\x1b[0m", err));
+  } catch (e) {
+    console.log("Native Firebase not available (running in Expo Go or web)");
+  }
+}
 
+export { auth, db, storage };
 export default app;

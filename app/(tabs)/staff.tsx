@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Card, CardContent } from '@/components/ui/Card';
 import { getCurrentUser } from '@/lib/auth';
-import { getLeaveRequests, LeaveRequest } from '@/lib/firestore';
+import { getLeaveRequests, LeaveRequest, parseDurationToDays } from '@/lib/firestore';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import {
@@ -43,7 +43,6 @@ interface StaffStats {
   pendingRequests: number;
   approvedRequests: number;
   deniedRequests: number;
-  totalDaysApproved: number;
   leaveCount: number;
   permissionCount: number;
   onDutyCount: number;
@@ -118,62 +117,71 @@ export default function StaffScreen() {
 
       setUser(currentUser);
 
-      // Load all requests and calculate staff stats
-      const allRequests = await getLeaveRequests();
+      // Load all requests and filter for CURRENT YEAR only
+      const allRequestsRaw = await getLeaveRequests();
+      const currentYear = new Date().getFullYear();
+      
+      const allRequests = allRequestsRaw.filter(req => {
+        const reqDate = req.fromDate instanceof Date ? req.fromDate : new Date(req.fromDate);
+        if (reqDate.getFullYear() !== currentYear) return false;
+
+        if (!currentUser.campus) return true;
+        // Include if campus matches OR if request has no campus (legacy)
+        return !req.campus || req.campus === currentUser.campus;
+      });
 
       // Get all staff users
       const usersSnapshot = await getDocs(
         query(collection(db, 'users'), where('role', '==', 'Staff'))
       );
 
-      const stats = usersSnapshot.docs.map((doc) => {
-        const userData = doc.data();
-        const userRequests = allRequests.filter((req) => req.userId === doc.id);
-
-        let totalDaysApproved = 0;
-        userRequests.forEach((req) => {
-          if (req.status === 'Approved') {
-            if (req.requestType === 'Permission') {
-              totalDaysApproved += 0.5; // Permission counts as half day
-            } else if (req.toDate) {
-              const diffTime = req.toDate.getTime() - req.fromDate.getTime();
-              const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
-              totalDaysApproved += diffDays;
-            } else {
-              totalDaysApproved += 1;
-            }
+      const stats = usersSnapshot.docs
+        .map((doc) => {
+          const userData = doc.data();
+          
+          // Skip if user belongs to a different campus (if campus is set for both)
+          if (currentUser.campus && userData.campus && userData.campus !== currentUser.campus) {
+            return null;
           }
-        });
 
-        return {
-          userId: doc.id,
-          userName: userData.name,
-          department: userData.department,
-          employeeId: userData.employeeId,
-          totalRequests: userRequests.length,
-          pendingRequests: userRequests.filter(
-            (req) => req.status === 'Pending'
-          ).length,
-          approvedRequests: userRequests.filter(
-            (req) => req.status === 'Approved'
-          ).length,
-          deniedRequests: userRequests.filter(
-            (req) => req.status === 'Rejected'
-          ).length,
-          totalDaysApproved,
-          leaveCount: userRequests.filter((req) => req.requestType === 'Leave')
-            .length,
-          permissionCount: userRequests.filter(
-            (req) => req.requestType === 'Permission'
-          ).length,
-          onDutyCount: userRequests.filter(
-            (req) => req.requestType === 'On Duty'
-          ).length,
-          compensationCount: userRequests.filter(
-            (req) => req.requestType === 'Compensation'
-          ).length,
-        } as StaffStats;
-      });
+          const userRequests = allRequests.filter((req) => req.userId === doc.id);
+
+          let leaveCount = 0;
+          let permissionCount = 0;
+          let onDutyCount = 0;
+          let compensationCount = 0;
+
+          userRequests.forEach((req) => {
+            if (req.status === 'Approved') {
+              if (req.requestType === 'Leave') leaveCount++;
+              else if (req.requestType === 'Permission') permissionCount++;
+              else if (req.requestType === 'On Duty') onDutyCount++;
+              else if (req.requestType === 'Compensation') compensationCount++;
+            }
+          });
+
+          return {
+            userId: doc.id,
+            userName: userData.name,
+            department: userData.department,
+            employeeId: userData.employeeId,
+            totalRequests: userRequests.length,
+            pendingRequests: userRequests.filter(
+              (req) => req.status === 'Pending'
+            ).length,
+            approvedRequests: userRequests.filter(
+              (req) => req.status === 'Approved'
+            ).length,
+            deniedRequests: userRequests.filter(
+              (req) => req.status === 'Rejected'
+            ).length,
+            leaveCount,
+            permissionCount,
+            onDutyCount,
+            compensationCount,
+          } as StaffStats;
+        })
+        .filter((s): s is StaffStats => s !== null);
 
       setStaffStats(stats.sort((a, b) => b.totalRequests - a.totalRequests));
     } catch (error) {
@@ -225,8 +233,8 @@ export default function StaffScreen() {
       (sum, staff) => sum + staff.pendingRequests,
       0
     );
-    const totalDaysApproved = staffStats.reduce(
-      (sum, staff) => sum + staff.totalDaysApproved,
+    const totalApprovedRequests = staffStats.reduce(
+      (sum, staff) => sum + staff.approvedRequests,
       0
     );
     const totalRequests = staffStats.reduce(
@@ -237,7 +245,7 @@ export default function StaffScreen() {
     return {
       totalStaff,
       totalPendingRequests,
-      totalDaysApproved,
+      totalApprovedRequests,
       totalRequests,
     };
   }, [staffStats]);
@@ -327,7 +335,7 @@ export default function StaffScreen() {
             </Text>
           </View>
 
-          {/* Search and Filter Section - MOVED HERE AFTER STATS */}
+          {/* Search and Filter Section */}
           <View ref={searchSectionRef} style={styles.searchContainer}>
             {/* Search Input */}
             <View style={styles.searchInputContainer}>
@@ -518,9 +526,9 @@ export default function StaffScreen() {
                       </View>
                       <View style={styles.statItem}>
                         <Text style={[styles.statItemNumber, styles.approved]}>
-                          {staff.totalDaysApproved}
+                          {staff.approvedRequests}
                         </Text>
-                        <Text style={styles.statItemLabel}>Days Approved</Text>
+                        <Text style={styles.statItemLabel}>Approved</Text>
                       </View>
                       <View style={styles.statItem}>
                         <Text style={styles.statItemNumber}>

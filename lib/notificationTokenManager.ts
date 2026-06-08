@@ -1,12 +1,48 @@
-import messaging from '@react-native-firebase/messaging';
+import Constants from 'expo-constants';
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 import { getCurrentUser } from './auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAccessToken } from './NotificaionAuthManager';
 
+// Check if we are in Expo Go
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// Conditionally import messaging or use a mock
+let messaging: any;
+if (!isExpoGo) {
+  try {
+    messaging = require('@react-native-firebase/messaging').default;
+  } catch (e) {
+    console.warn('Native messaging not available, falling back to mock');
+    messaging = () => ({
+      requestPermission: async () => 1, // AUTHORIZED
+      getToken: async () => 'mock-token-expo-go',
+    });
+    messaging.AuthorizationStatus = { AUTHORIZED: 1, PROVISIONAL: 2 };
+  }
+} else {
+  // Mock implementation for Expo Go
+  messaging = () => ({
+    requestPermission: async () => {
+      console.log('Skipping native permission request in Expo Go');
+      return 1; // AUTHORIZED
+    },
+    getToken: async () => {
+      console.log('Returning mock FCM token for Expo Go');
+      return 'mock-token-expo-go';
+    },
+  });
+  messaging.AuthorizationStatus = { AUTHORIZED: 1, PROVISIONAL: 2 };
+}
+
 export const setupFCM = async () => {
   try {
+    if (isExpoGo) {
+      console.log('⚠️ Skipping FCM setup in Expo Go - Native modules not supported');
+      return;
+    }
+
     // Ask permission
     const authStatus = await messaging().requestPermission();
     const enabled =

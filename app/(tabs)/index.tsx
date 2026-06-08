@@ -6,8 +6,8 @@ import { LeaveRequestCard as LeaveRequestCardBase } from '@/components/LeaveRequ
 // Memoized LeaveRequestCard for performance
 const LeaveRequestCard = React.memo(LeaveRequestCardBase);
 import { getCurrentUser } from '@/lib/auth';
-import { getLeaveRequests, LeaveRequest } from '@/lib/firestore';
-import { FileText, Users, Calendar, Clock, TrendingUp, ChevronUp } from 'lucide-react-native';
+import { getLeaveRequests, LeaveRequest, parseDurationToDays } from '@/lib/firestore';
+import { FileText, Users, Calendar, Clock, TrendingUp, ChevronUp, ChevronRight } from 'lucide-react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, router } from 'expo-router';
 
@@ -137,9 +137,7 @@ export default function HomeScreen() {
       });
 
       const totalDaysTaken = sameTypeApproved.reduce((total, request) => {
-        const durationMatch = request.duration?.match(/(\d+)/);
-        const days = durationMatch ? parseInt(durationMatch[1], 10) : 1;
-        return total + days;
+        return total + parseDurationToDays(request.duration, request.requestType);
       }, 0);
 
       return {
@@ -214,7 +212,8 @@ export default function HomeScreen() {
     try {
       console.log('Loading requests (manual)...');
       const requestsData = await getLeaveRequests(
-        currentUser.role === 'Staff' ? currentUser.id : undefined
+        currentUser.role === 'Staff' ? currentUser.id : undefined,
+        currentUser.role === 'Director' || currentUser.role === 'SubAdmin' ? (currentUser as any).campus : undefined
       );
       setRequests(requestsData);
       console.log(`Loaded ${requestsData.length} requests`);
@@ -729,6 +728,14 @@ export default function HomeScreen() {
               <View style={styles.directorHeader}>
                 <Text style={styles.directorWelcomeText}>SubAdmin Dashboard</Text>
                 <Text style={styles.directorSubtitle}>Welcome, {user?.name} • {user?.department}</Text>
+                <TouchableOpacity
+                  style={styles.myRequestsButton}
+                  onPress={() => router.push(`/staff/${user.id}`)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.myRequestsButtonText}>View My Requests</Text>
+                  <ChevronRight size={16} color="#3B82F6" />
+                </TouchableOpacity>
               </View>
 
               <Animated.View
@@ -1371,5 +1378,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 28,
+  },
+  myRequestsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    backgroundColor: '#EFF6FF',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  myRequestsButtonText: {
+    color: '#3B82F6',
+    fontWeight: '600',
+    marginRight: 4,
+    fontSize: 14,
   },
 });

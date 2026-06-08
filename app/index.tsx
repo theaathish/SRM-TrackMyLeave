@@ -2,9 +2,21 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { getCurrentUser } from '@/lib/auth';
-import messaging from '@react-native-firebase/messaging';
 import * as Notifications from 'expo-notifications';
 import { appStateManager } from '@/lib/appStateManager';
+import Constants from 'expo-constants';
+
+// Check if we are in Expo Go
+const isExpoGo = Constants.appOwnership === 'expo';
+
+let messaging: any;
+if (!isExpoGo) {
+  try {
+    messaging = require('@react-native-firebase/messaging').default;
+  } catch (e) {
+    console.warn('Native messaging not available');
+  }
+}
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -27,20 +39,22 @@ const setupNotificationChannel = async () => {
   }
 };
 
-messaging().setBackgroundMessageHandler(async (remoteMessage) => {
-  console.log('Background message:', remoteMessage);
-  if (remoteMessage.messageId) {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: remoteMessage.notification?.title ?? 'Background Message',
-        body: remoteMessage.notification?.body ?? 'You got a new notification',
-        sound: 'notificationsound',
-        data: remoteMessage.data || {},
-      },
-      trigger: null,
-    });
-  }
-});
+if (messaging) {
+  messaging().setBackgroundMessageHandler(async (remoteMessage: any) => {
+    console.log('Background message:', remoteMessage);
+    if (remoteMessage.messageId) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: remoteMessage.notification?.title ?? 'Background Message',
+          body: remoteMessage.notification?.body ?? 'You got a new notification',
+          sound: 'notificationsound',
+          data: remoteMessage.data || {},
+        },
+        trigger: null,
+      });
+    }
+  });
+}
 
 export default function IndexScreen() {
   const [isLoading, setIsLoading] = useState(true);
@@ -135,24 +149,28 @@ export default function IndexScreen() {
         console.warn('Notification permissions not granted');
       }
 
-      // Handle foreground notifications
-      const foregroundSubscription = messaging().onMessage(async (remoteMessage) => {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: remoteMessage.notification?.title ?? 'New Message',
-            body: remoteMessage.notification?.body ?? 'You got a new notification',
-            sound: 'notificationsound',
-            data: remoteMessage.data || {},
-          },
-          trigger: null,
+      // Handle foreground notifications using native messaging if available
+      let foregroundSubscription: (() => void) | undefined;
+      
+      if (messaging) {
+        foregroundSubscription = messaging().onMessage(async (remoteMessage: any) => {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: remoteMessage.notification?.title ?? 'New Message',
+              body: remoteMessage.notification?.body ?? 'You got a new notification',
+              sound: 'notificationsound',
+              data: remoteMessage.data || {},
+            },
+            trigger: null,
+          });
         });
-      });
+      }
 
       // Handle notification clicks - use the extracted function
       const responseSubscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
 
       return () => {
-        foregroundSubscription();
+        if (foregroundSubscription) foregroundSubscription();
         responseSubscription.remove();
       };
     } catch (error) {

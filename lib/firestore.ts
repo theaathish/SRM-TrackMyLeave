@@ -48,7 +48,34 @@ export interface LeaveRequest {
   employeeId?: string;
   priority?: 'Low' | 'Medium' | 'High';
   isUrgent?: boolean;
+  duration?: string;
+  campus?: 'TRP' | 'RMP';
 }
+
+/**
+ * Parse duration string to number of days
+ */
+export const parseDurationToDays = (duration: any, requestType: string): number => {
+  if (requestType === 'Permission') {
+    return 0.5; // Convention: Permission counts as half a day in stats
+  }
+  
+  if (!duration || typeof duration !== 'string') return 1; // Fallback
+  
+  const lowerDuration = duration.toLowerCase();
+  
+  if (lowerDuration.includes('no working days')) {
+    return 0;
+  }
+
+  // Handle "1 day (compensation)", "2 working days", "1 day"
+  const daysMatch = duration.match(/(\d+)\s*(working\s*)?days?/i);
+  if (daysMatch) {
+    return parseInt(daysMatch[1], 10);
+  }
+
+  return 1; // Default fallback
+};
 
 // Enhanced leave request creation with high priority notifications
 export const createLeaveRequest = async (
@@ -66,6 +93,7 @@ export const createLeaveRequest = async (
       updatedAt: serverTimestamp(),
       priority: requestData.priority || 'Medium',
       isUrgent: requestData.isUrgent || false,
+      campus: requestData.campus || null,
     };
 
     const docRef = await addDoc(collection(db, 'leaveRequests'), dataToSave);
@@ -100,7 +128,8 @@ export const createLeaveRequest = async (
 
 // Get leave requests with pagination
 export const getLeaveRequests = async (
-  userId?: string
+  userId?: string,
+  campus?: 'TRP' | 'RMP'
 ): Promise<LeaveRequest[]> => {
   try {
     let querySnapshot;
@@ -115,6 +144,7 @@ export const getLeaveRequests = async (
       querySnapshot = await getDocs(q);
     } else {
       // For directors: get all requests
+      // We filter by campus in memory to ensure legacy requests without campus field are still included
       const q = query(
         collection(db, 'leaveRequests'),
         orderBy('createdAt', 'desc')
@@ -125,6 +155,11 @@ export const getLeaveRequests = async (
     // Use Promise.all for concurrent user lookups
     const requestsPromises = querySnapshot.docs.map(async (docSnapshot) => {
       const data = docSnapshot.data();
+      
+      // Client-side campus filter (optional)
+      if (campus && data.campus && data.campus !== campus) {
+        return null;
+      }
 
       // Get user name concurrently
       try {
@@ -156,7 +191,8 @@ export const getLeaveRequests = async (
       }
     });
 
-    const requests = await Promise.all(requestsPromises);
+    const results = await Promise.all(requestsPromises);
+    const requests = results.filter((r): r is LeaveRequest => r !== null);
 
     // Sort by createdAt descending
     requests.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -167,6 +203,7 @@ export const getLeaveRequests = async (
     throw new Error(`Failed to get leave requests: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
+
 
 // Enhanced status update with high priority notifications
 export const updateLeaveRequestStatus = async (
@@ -239,28 +276,26 @@ export const updateLeaveRequestStatus = async (
 export async function fetchMatchingLeaves(userId: string, leaveType: string, leaveSubType?: string) {
   const leavesRef = collection(db, "leaveRequests");
 
-  // Basic query: userId, leaveType, and status = Approved
+  // Basic query: userId, requestType (or leaveType), and status = Approved
+  // Note: requestType and leaveType are both used in the schema
   let q = query(
     leavesRef,
     where("userId", "==", userId),
-    where("leaveType", "==", leaveType),
     where("status", "==", "Approved")
   );
 
-  // If it's Casual leave and leaveSubType is provided, add that filter too
-  if (leaveType === "Casual" && leaveSubType) {
-    q = query(
-      leavesRef,
-      where("userId", "==", userId),
-      where("leaveType", "==", leaveType),
-      where("leaveSubType", "==", leaveSubType),
-      where("status", "==", "Approved")
-    );
+  if (leaveType) {
+    q = query(q, where("leaveType", "==", leaveType));
+  }
+
+  // If leaveSubType is provided, always filter by it to be precise
+  if (leaveSubType) {
+    q = query(q, where("leaveSubType", "==", leaveSubType));
   }
 
   try {
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => doc.data()).length;
+    return querySnapshot.docs.length;
   } catch (error) {
     console.error("Error querying leaves:", error);
     throw error;

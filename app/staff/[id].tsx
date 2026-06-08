@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { getLeaveRequests, LeaveRequest } from '@/lib/firestore';
+import { getLeaveRequests, LeaveRequest, parseDurationToDays } from '@/lib/firestore';
 import { collection, getDoc, doc } from 'firebase/firestore';
 import { getCurrentUser, updateUserProfile } from '@/lib/auth';
 import { db } from '@/lib/firebase';
@@ -99,14 +99,18 @@ function CalendarView({ requests, onDatePress }: { requests: LeaveRequest[], onD
       onDatePress(dateKey, dayRequests);
     }
   };
+
+  const currentYear = new Date().getFullYear();
   
   return (
     <Card style={styles.calendarCard}>
       <CardHeader>
-        <Text style={styles.calendarTitle}>Leave Calendar</Text>
+        <Text style={styles.calendarTitle}>Leave Calendar ({currentYear})</Text>
       </CardHeader>
       <CardContent>
         <Calendar
+          minDate={`${currentYear}-01-01`}
+          maxDate={`${currentYear}-12-31`}
           markedDates={markedDates}
           onDayPress={handleDayPress}
           theme={{
@@ -309,9 +313,15 @@ function StaffDetailScreen() {
       const userDoc = await getDoc(doc(db, 'users', id as string));
       setStaff(userDoc.exists() ? { ...userDoc.data(), id: userDoc.id } : null);
 
-      // Get all leave requests for this staff
+      // Get all leave requests for this staff and filter for CURRENT YEAR
       const reqs = await getLeaveRequests(id as string);
-      setRequests(reqs);
+      const currentYear = new Date().getFullYear();
+      const filteredReqs = reqs.filter(r => {
+        const reqDate = r.fromDate instanceof Date ? r.fromDate : new Date(r.fromDate);
+        return reqDate.getFullYear() === currentYear;
+      });
+      
+      setRequests(filteredReqs);
     } catch (error) {
       setStaff(null);
       setRequests([]);
@@ -350,33 +360,22 @@ function StaffDetailScreen() {
     requests.forEach(r => {
       stat.total++;
       if (r.status === 'Pending') stat.pending++;
-      if (r.status === 'Approved') stat.approved++;
-      if (r.status === 'Rejected') stat.denied++;
       if (r.status === 'Approved') {
-        if (r.requestType === 'Permission') {
-          stat.daysApproved += 0.5;
-        } else if (r.toDate) {
-          // Set both dates to midnight to ignore time portion
-          const from = new Date(r.fromDate);
-          const to = new Date(r.toDate);
-          from.setHours(0, 0, 0, 0);
-          to.setHours(0, 0, 0, 0);
-          const diffTime = to.getTime() - from.getTime();
-          const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
-          stat.daysApproved += diffDays;
-        } else {
-          stat.daysApproved += 1;
+        stat.approved++;
+        stat.daysApproved += parseDurationToDays(r.duration, r.requestType);
+        
+        // Move type breakdown inside Approved check
+        if (r.requestType === 'Leave') {
+          stat.leave++;
+          if (r.leaveSubType === 'Casual') stat.casual++;
+          if (r.leaveSubType === 'Medical') stat.medical++;
+          if (r.leaveSubType === 'Emergency') stat.emergency++;
         }
+        if (r.requestType === 'Permission') stat.permission++;
+        if (r.requestType === 'On Duty') stat.od++;
+        if (r.requestType === 'Compensation') stat.compensation++;
       }
-      if (r.requestType === 'Leave') {
-        stat.leave++;
-        if (r.leaveSubType === 'Casual') stat.casual++;
-        if (r.leaveSubType === 'Medical') stat.medical++;
-        if (r.leaveSubType === 'Emergency') stat.emergency++;
-      }
-      if (r.requestType === 'Permission') stat.permission++;
-      if (r.requestType === 'On Duty') stat.od++;
-      if (r.requestType === 'Compensation') stat.compensation++;
+      if (r.status === 'Rejected') stat.denied++;
     });
     return stat;
   }, [requests]);
@@ -456,10 +455,6 @@ function StaffDetailScreen() {
               <View style={styles.statRowBox}>
                 <Text style={styles.statLabelBox}>Denied</Text>
                 <Text style={styles.statValueBox}>{stats.denied}</Text>
-              </View>
-              <View style={styles.statRowBox}>
-                <Text style={styles.statLabelBox}>Total Days Taken</Text>
-                <Text style={styles.statValueBox}>{stats.daysApproved}</Text>
               </View>
             </View>
             

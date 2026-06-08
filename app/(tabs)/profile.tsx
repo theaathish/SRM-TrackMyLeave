@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { Picker } from '@/components/ui/Picker';
 import { getCurrentUser, signOut, updateUserProfile, updateUserEmployeeId } from '@/lib/auth';
 import type { User as AppUser } from '@/lib/auth';
-import { User, Mail, Building, Shield, LogOut, Edit, Save, X, Key } from 'lucide-react-native';
+import { User as UserIcon, Mail, Building, Shield, LogOut, Edit, Save, X } from 'lucide-react-native';
 import * as SecureStore from 'expo-secure-store';
 import { MaterialIcons } from '@expo/vector-icons';
 import {
@@ -85,28 +85,27 @@ export default function ProfileScreen() {
   const [empIdEditable, setEmpIdEditable] = useState(false);
 
   useEffect(() => {
-    loadUserData();
-    loadBiometricInfo();
+    let mounted = true;
+
+    const loadData = async () => {
+      await loadUserData(mounted);
+      if (mounted) {
+        await loadBiometricInfo();
+      }
+    };
+
+    loadData();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading...</Text>
-      </SafeAreaView>
-    );
-  }
-
-  if (!user) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>User not found</Text>
-      </SafeAreaView>
-    );
-  }
-  const loadUserData = async () => {
+  const loadUserData = async (mounted: boolean) => {
     try {
       const currentUser = await getCurrentUser();
+      if (!mounted) return;
+      
       if (currentUser) {
         setUser(currentUser);
         setEditData({
@@ -123,9 +122,9 @@ export default function ProfileScreen() {
       }
     } catch (error) {
       console.error('Error loading user data:', error);
-      router.replace('/auth/');
+      if (mounted) router.replace('/auth/');
     } finally {
-      setLoading(false);
+      if (mounted) setLoading(false);
     }
   };
 
@@ -378,7 +377,7 @@ export default function ProfileScreen() {
             </CardHeader>
             <CardContent style={styles.infoContent}>
               <View style={styles.infoRow}>
-                <User size={20} color="#6B7280" />
+                <UserIcon size={20} color="#6B7280" />
                 <View style={styles.infoText}>
                   <Text style={styles.infoLabel}>Name</Text>
                   {isEditing ? (
@@ -535,7 +534,7 @@ export default function ProfileScreen() {
 
               <Button
                 onPress={handleOpenPasswordModal}
-                icon={<Key size={16} color="#FFFFFF" />}
+                icon={<MaterialIcons name="vpn-key" size={16} color="#FFFFFF" />}
                 style={styles.pinButton}
                 title="Change Password"
               />

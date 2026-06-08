@@ -463,6 +463,7 @@ export default function SubmitLeaveScreen() {
         leaveType: formData.leaveType,
         reason: formData.reason,
         duration: formData.calculatedDuration,
+        campus: user.campus,
       };
 
       if (formData.leaveType === 'Compensation') {

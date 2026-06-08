@@ -214,6 +214,10 @@ function LeaveRequestCardComponent({ request, isDirector, isSubAdmin, onUpdate, 
   };
 
   const calculateDuration = () => {
+    if (request.duration) {
+      return request.duration;
+    }
+
     if (request.requestType === 'Permission') {
       if (request.fromTime && request.toTime) {
         const [fromHour, fromMinute] = request.fromTime.split(':').map(Number);
