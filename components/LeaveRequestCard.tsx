@@ -141,12 +141,10 @@ function LeaveRequestCardComponent({ request, isDirector, isSubAdmin, onUpdate, 
         request.id, 
         'Approved',
         undefined,
-        undefined,
-        () => {
-          // Success callback for immediate UI update
-          console.log('Request approved, updating UI immediately');
-        }
+        undefined
       );
+      // Success callback for immediate UI update
+      console.log('Request approved, updating UI immediately');
       
       Alert.alert(
         'Success', 
@@ -180,12 +178,10 @@ function LeaveRequestCardComponent({ request, isDirector, isSubAdmin, onUpdate, 
         request.id, 
         'Rejected',
         undefined,
-        undefined,
-        () => {
-          // Success callback for immediate UI update
-          console.log('Request denied, updating UI immediately');
-        }
+        undefined
       );
+      // Success callback for immediate UI update
+      console.log('Request denied, updating UI immediately');
       
       Alert.alert(
         'Success', 

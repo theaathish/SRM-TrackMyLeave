@@ -89,7 +89,7 @@ export const authenticateWithBiometrics = async (
     } else {
       let errorMessage = 'Biometric authentication failed';
       
-      switch (result.error) {
+      switch (result.error as any) {
         case 'user_cancel':
           errorMessage = allowCancel ? 'Authentication cancelled by user' : 'Please authenticate to continue';
           break;

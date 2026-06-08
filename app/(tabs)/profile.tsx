@@ -264,6 +264,7 @@ export default function ProfileScreen() {
   };
 
   const handleCancelEdit = () => {
+    if (!user) return;
     setEditData({
       name: user.name || '',
       email: user.email || '',

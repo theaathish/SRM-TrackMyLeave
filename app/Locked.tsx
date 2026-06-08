@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Alert, TouchableOpacity, Animated, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, User } from '@/lib/auth';
 import { appStateManager } from '@/lib/appStateManager';
 import { Lock, Fingerprint, Unlock, Shield } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,7 +9,7 @@ import { getBiometricDescription } from '@/lib/biometric';
 import { router, useLocalSearchParams } from 'expo-router';
 
 export default function LockedScreen() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
   const [biometricInfo, setBiometricInfo] = useState('');
   const [fadeAnim] = useState(new Animated.Value(0));

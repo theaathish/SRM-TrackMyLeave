@@ -2,7 +2,7 @@ import { updateDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
 import { getCurrentUser } from './auth';
 import { appStateManager } from './appStateManager';
-import { updateNotificationPreferences } from './notifications';
+import { setNotificationsEnabled } from './notifications';
 
 export interface UserPreferences {
   appLockEnabled: boolean;
@@ -36,7 +36,7 @@ export const updateUserPreferences = async (
 
     // Update notification preferences if changed
     if (preferences.notificationsEnabled !== undefined) {
-      await updateNotificationPreferences(preferences.notificationsEnabled);
+      await setNotificationsEnabled(preferences.notificationsEnabled);
     }
 
     return { success: true, message: 'Preferences updated successfully' };
