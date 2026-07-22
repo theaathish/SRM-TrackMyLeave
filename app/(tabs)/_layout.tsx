@@ -75,7 +75,7 @@ export default function TabLayout() {
         options={{
           title: 'Form',
           tabBarIcon: ({ color, size }) => <Plus size={size} color={color} />,
-          href: user?.role === 'Staff' ? '/(tabs)/submit' : null,
+          href: user?.role === 'Staff' || user?.role === 'SubAdmin' ? '/(tabs)/submit' : null,
         }}
       />
       <Tabs.Screen

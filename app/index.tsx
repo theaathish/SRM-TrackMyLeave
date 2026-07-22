@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { getCurrentUser } from '@/lib/auth';
+import { nativeFirebaseReady } from '@/lib/firebase';
 import * as Notifications from 'expo-notifications';
 import { appStateManager } from '@/lib/appStateManager';
 import Constants from 'expo-constants';
@@ -10,7 +11,7 @@ import Constants from 'expo-constants';
 const isExpoGo = Constants.appOwnership === 'expo';
 
 let messaging: any;
-if (!isExpoGo) {
+if (Platform.OS !== 'web' && !isExpoGo) {
   try {
     messaging = require('@react-native-firebase/messaging').default;
   } catch (e) {
@@ -39,22 +40,6 @@ const setupNotificationChannel = async () => {
   }
 };
 
-if (messaging) {
-  messaging().setBackgroundMessageHandler(async (remoteMessage: any) => {
-    console.log('Background message:', remoteMessage);
-    if (remoteMessage.messageId) {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: remoteMessage.notification?.title ?? 'Background Message',
-          body: remoteMessage.notification?.body ?? 'You got a new notification',
-          sound: 'notificationsound',
-          data: remoteMessage.data || {},
-        },
-        trigger: null,
-      });
-    }
-  });
-}
 
 export default function IndexScreen() {
   const [isLoading, setIsLoading] = useState(true);
@@ -143,7 +128,32 @@ export default function IndexScreen() {
   const initializeNotifications = async () => {
     try {
       await setupNotificationChannel();
-      
+
+      // Wait for native Firebase SDK to be fully initialized before attempting
+      // to use messaging(). Without this await, messaging() could throw
+      // "No Firebase App '[DEFAULT]' has been created" on cold start.
+      await nativeFirebaseReady;
+
+      // Register background message handler AFTER native Firebase is ready.
+      // Previously this lived at module level and ran at import time — before
+      // nativeFirebaseReady could resolve — causing the '[DEFAULT]' crash.
+      if (messaging) {
+        messaging().setBackgroundMessageHandler(async (remoteMessage: any) => {
+          console.log('Background message:', remoteMessage);
+          if (remoteMessage.messageId) {
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: remoteMessage.notification?.title ?? 'Background Message',
+                body: remoteMessage.notification?.body ?? 'You got a new notification',
+                sound: 'notificationsound',
+                data: remoteMessage.data || {},
+              },
+              trigger: null,
+            });
+          }
+        });
+      }
+
       const { status } = await Notifications.requestPermissionsAsync();
       if (status !== 'granted') {
         console.warn('Notification permissions not granted');
@@ -151,7 +161,7 @@ export default function IndexScreen() {
 
       // Handle foreground notifications using native messaging if available
       let foregroundSubscription: (() => void) | undefined;
-      
+
       if (messaging) {
         foregroundSubscription = messaging().onMessage(async (remoteMessage: any) => {
           await Notifications.scheduleNotificationAsync({

@@ -72,7 +72,7 @@ const defaultHolidays: Holiday[] = [
 // Cache for holidays
 let holidaysCache: Holiday[] | null = null;
 let lastFetch: number = 0;
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 export const initializeHolidays = async (): Promise<void> => {
   try {
@@ -114,7 +114,7 @@ export const getHolidays = async (year?: number): Promise<Holiday[]> => {
 
     if (year) {
       const startOfYear = new Date(year, 0, 1);
-      const endOfYear = new Date(year, 11, 31);
+      const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999);
       holidaysQuery = query(
         collection(db, 'holidays'),
         where('date', '>=', startOfYear),
@@ -516,9 +516,9 @@ export const validateLeaveRequest = async (
     }
 
     // Check if any requested dates fall on existing holidays
-    const { hasHolidays, holidays } = await hasHolidaysInRange(fromDate, toDate);
+    const { hasHolidays, holidays } = await hasHolidaysInRange(fromDate, toDate, campus);
     if (hasHolidays && leaveType !== 'Compensation') {
-      const holidayNames = holidays.filter(h => !h.campus || (campus && h.campus === campus)).map(h => `${h.name} (${h.date.toLocaleDateString('en-GB')})`);
+      const holidayNames = holidays.map(h => `${h.name} (${h.date.toLocaleDateString('en-GB')})`);
       if (holidayNames.length > 0) {
         warnings.push(`Your leave request includes holidays: ${holidayNames.join(', ')}. Consider adjusting your dates.`);
       }

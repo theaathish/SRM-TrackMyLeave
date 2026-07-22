@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
@@ -10,7 +11,7 @@ const isExpoGo = Constants.appOwnership === 'expo';
 
 // Conditionally import messaging or use a mock
 let messaging: any;
-if (!isExpoGo) {
+if (Platform.OS !== 'web' && !isExpoGo) {
   try {
     messaging = require('@react-native-firebase/messaging').default;
   } catch (e) {
@@ -22,14 +23,14 @@ if (!isExpoGo) {
     messaging.AuthorizationStatus = { AUTHORIZED: 1, PROVISIONAL: 2 };
   }
 } else {
-  // Mock implementation for Expo Go
+  // Mock implementation for Expo Go and Web
   messaging = () => ({
     requestPermission: async () => {
-      console.log('Skipping native permission request in Expo Go');
+      console.log('Skipping native permission request in Expo Go/Web');
       return 1; // AUTHORIZED
     },
     getToken: async () => {
-      console.log('Returning mock FCM token for Expo Go');
+      console.log('Returning mock FCM token for Expo Go/Web');
       return 'mock-token-expo-go';
     },
   });
@@ -50,23 +51,36 @@ export const setupFCM = async () => {
       authStatus === messaging.AuthorizationStatus.PROVISIONAL;
 
     if (!enabled) {
-      console.log('❌ Permission denied for notifications');
+      console.warn('❌ FCM Register Exception: Permission denied for notifications (authStatus: ' + authStatus + ')');
       return;
     }
 
     // Get FCM token
-    const token = await messaging().getToken();
+    let token = '';
+    try {
+      token = await messaging().getToken();
+    } catch (tokenError) {
+      console.error('❌ FCM Register Exception: messaging().getToken() failed:', tokenError);
+      return;
+    }
+
     const user = await getCurrentUser();
+    if (!user) {
+      console.warn('⚠️ FCM Setup Warning: getCurrentUser() returned null (possible auth state race condition). Token will not be saved to Firestore.');
+    }
+
     console.log('🔑 FCM TOKEN:', token, '👤 User:', user);
 
-    await AsyncStorage.setItem("FCMKey", token);
+    if (token) {
+      await AsyncStorage.setItem("FCMKey", token);
+    }
     
     // Add token to user's token list if user is authenticated
     if (user && token) {
       await addUserToken(user.id, token);
     }
   } catch (err) {
-    console.log('❌ Notification setup error:', err);
+    console.error('❌ Notification setup error inside setupFCM:', err);
   }
 };
 
@@ -161,7 +175,7 @@ export const addUserToken = async (userId: string, token: string): Promise<void>
       });
     }
   } catch (error) {
-    console.error('Error adding user token:', error);
+    console.error('❌ FCM Registration Failed: Firestore write in addUserToken() failed:', error);
     throw new Error(`Failed to add user token: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };

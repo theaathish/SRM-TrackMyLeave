@@ -35,6 +35,10 @@ let auth: Auth;
 let db: any;
 let storage: any;
 
+// Promise that resolves when the native Firebase SDK is ready.
+// Resolves `true` on success, `false` when not applicable (web / Expo Go) or on error.
+export let nativeFirebaseReady: Promise<boolean>;
+
 // Initialize Firebase
 if (getApps().length === 0) {
   app = initializeApp(firebaseConfig);
@@ -55,16 +59,30 @@ if (Platform.OS !== 'web') {
 db = getFirestore(app);
 storage = getStorage(app);
 
-// Only initialize Native Firebase if NOT in Expo Go
-if (!isExpoGo) {
-  try {
-    const { initializeApp: InitRNF } = require('@react-native-firebase/app');
-    InitRNF(firebaseConfig)
-      .then(() => {console.log("intilized fire message")})
-      .catch((err: any) => console.log("\x1b[31mNotification Error:\x1b[0m", err));
-  } catch (e) {
-    console.log("Native Firebase not available (running in Expo Go or web)");
-  }
+// Only initialize Native Firebase if NOT on web and NOT in Expo Go.
+// nativeFirebaseReady resolves once the native SDK is ready so that
+// callers (e.g. app/index.tsx) can safely use messaging() without a race.
+if (Platform.OS !== 'web' && !isExpoGo) {
+  nativeFirebaseReady = new Promise<boolean>((resolve) => {
+    try {
+      const { initializeApp: InitRNF } = require('@react-native-firebase/app');
+      InitRNF(firebaseConfig)
+        .then(() => {
+          console.log('Native Firebase initialized successfully');
+          resolve(true);
+        })
+        .catch((err: any) => {
+          console.error('\x1b[31mNative Firebase init error:\x1b[0m', err);
+          resolve(false); // resolve (not reject) so callers don't need try/catch
+        });
+    } catch (e) {
+      console.log('Native Firebase not available (running in Expo Go or web)');
+      resolve(false);
+    }
+  });
+} else {
+  // Not applicable on web or Expo Go — resolve immediately
+  nativeFirebaseReady = Promise.resolve(false);
 }
 
 export { auth, db, storage };

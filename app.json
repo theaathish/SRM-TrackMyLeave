@@ -2,7 +2,7 @@
   "expo": {
     "name": "TrackMyLeave",
     "slug": "trackmyleave",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -58,12 +58,12 @@
         "android.permission.VIBRATE"
       ],
       "package": "com.srmrearch.leavemanager",
-      "versionCode": 21
+      "versionCode": 22
     },
     "updates": {
       "url": "https://u.expo.dev/af4bec31-9cb2-4ead-a81e-3e706ed14794"
     },
-    "runtimeVersion": "1.1.1",
+    "runtimeVersion": "1.1.2",
     "extra": {
       "firebase": {
         "apiKey": "AIzaSyCHKewsoykpqi6CtfJk4PTaI5ZGZneJuUM",

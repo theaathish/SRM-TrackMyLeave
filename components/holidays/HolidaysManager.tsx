@@ -164,7 +164,8 @@ export default function HolidaysManager({ user }: { user?: any }) {
         return Alert.alert('Validation Error', 'Please select a Saturday. The selected date is not a Saturday.');
       }
       
-      const dateStr = newSaturdayDate.toISOString().split('T')[0];
+      const d = newSaturdayDate;
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       await HolidaysAdmin.setSaturdayWorking(dateStr, false, user?.campus);
       Alert.alert('Success', 'Saturday marked as holiday');
       setNewSaturdayDate(null);
