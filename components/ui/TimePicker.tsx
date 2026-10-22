@@ -17,6 +17,8 @@ interface TimePickerProps {
   compareWithTime?: string;
   isPermission?: boolean; // Add this prop for permission restrictions
   excludeTimes?: string[]; // Array of time strings ("HH:mm") to disable
+  minHour?: number;
+  maxHour?: number;
 }
 
 export const TimePicker: React.FC<TimePickerProps> = ({
@@ -30,6 +32,8 @@ export const TimePicker: React.FC<TimePickerProps> = ({
   compareWithTime,
   isPermission = false,
   excludeTimes = [],
+  minHour,
+  maxHour,
 }) => {
   const [show, setShow] = useState(false);
 
@@ -74,6 +78,14 @@ export const TimePicker: React.FC<TimePickerProps> = ({
   };
 
   const getMinMaxTime = () => {
+    if (minHour !== undefined && maxHour !== undefined) {
+      const minDate = new Date();
+      minDate.setHours(minHour, 0, 0, 0);
+      const maxDate = new Date();
+      maxDate.setHours(maxHour, 0, 0, 0);
+      return { min: minDate, max: maxDate };
+    }
+
     if (!isPermission) return { min: null, max: null };
     
     const minDate = new Date();
@@ -97,7 +109,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
   const handleChange = (_event: any, selectedDate?: Date) => {
     setShow(false);
     if (selectedDate) {
-      if (isPermission) {
+      if (isPermission || (minHour !== undefined && maxHour !== undefined)) {
         const { min, max } = getMinMaxTime();
         if (min && selectedDate < min) {
           selectedDate = min;
@@ -152,8 +164,8 @@ export const TimePicker: React.FC<TimePickerProps> = ({
           is24Hour={false}
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={handleChange}
-          minimumDate={isPermission ? getMinMaxTime().min || undefined : undefined}
-          maximumDate={isPermission ? getMinMaxTime().max || undefined : undefined}
+          minimumDate={(isPermission || minHour !== undefined) ? getMinMaxTime().min || undefined : undefined}
+          maximumDate={(isPermission || maxHour !== undefined) ? getMinMaxTime().max || undefined : undefined}
         />
       )}
     </View>

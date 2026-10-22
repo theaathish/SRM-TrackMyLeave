@@ -67,7 +67,7 @@ function LeaveRequestCardComponent({ request, isDirector, isSubAdmin, onUpdate, 
 
   // Navigate to staff detail page
   const navigateToStaffDetail = () => {
-    if (request.userId && (isDirector || isSubAdmin)) {
+    if (request.userId) {
       router.push(`/staff/${request.userId}`);
     }
   };
@@ -275,22 +275,22 @@ function LeaveRequestCardComponent({ request, isDirector, isSubAdmin, onUpdate, 
         <CardContent>
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              {(isDirector || isSubAdmin) && (
-                <TouchableOpacity 
-                  style={styles.userInfoClickable}
-                  onPress={navigateToStaffDetail}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.userInfo}>
-                    <User size={16} color="#3B82F6" />
-                    <Text style={styles.userName}>
-                      {request.userName}
-                    </Text>
-                    <ChevronRight size={16} color="#3B82F6" style={styles.chevronIcon} />
-                  </View>
-                  <Text style={styles.viewDetailsText}>Tap to view all requests</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity 
+                style={styles.userInfoClickable}
+                onPress={navigateToStaffDetail}
+                activeOpacity={0.7}
+              >
+                <View style={styles.userInfo}>
+                  <User size={16} color="#3B82F6" />
+                  <Text style={styles.userName}>
+                    {request.userName || 'View Calendar'}
+                  </Text>
+                  <ChevronRight size={16} color="#3B82F6" style={styles.chevronIcon} />
+                </View>
+                <Text style={styles.viewDetailsText}>
+                  {isDirector || isSubAdmin ? 'Tap to view all requests' : 'Tap to view leave calendar'}
+                </Text>
+              </TouchableOpacity>
               <Text style={styles.department}>
                 {request.department} • ID: {request.empId}
               </Text>

@@ -24,7 +24,21 @@ const leaveSubTypes = [
   { label: 'Casual Leave', value: 'Casual' },
   { label: 'Medical Leave', value: 'Medical' },
   { label: 'Emergency Leave', value: 'Emergency' },
+  { label: 'Half Day', value: 'Half Day' },
 ];
+
+/**
+ * Returns the working-hour boundaries for a given campus.
+ * startHour / endHour are in 24-hour integers (e.g. 8 = 8 AM, 17 = 5 PM).
+ *
+ * RMP: 08:00 – 16:00
+ * TRP: 09:00 – 17:00
+ * Unknown/undefined: falls back to RMP defaults.
+ */
+function getCampusWorkHours(campus?: string | null): { startHour: number; endHour: number } {
+  if (campus === 'TRP') return { startHour: 9, endHour: 17 };
+  return { startHour: 8, endHour: 16 }; // RMP and default
+}
 
 export default function SubmitLeaveScreen() {
   const [user, setUser] = useState<any>(null);
@@ -46,6 +60,7 @@ export default function SubmitLeaveScreen() {
     leaveDate: null as Date | null,
     fromTime: '',
     toTime: '',
+    halfDaySession: '' as '' | 'Morning' | 'Afternoon',
     reason: '',
     calculatedDuration: '',
   });
@@ -194,6 +209,9 @@ export default function SubmitLeaveScreen() {
     if (formData.leaveType === 'Compensation') {
       return (formData.workedDate && formData.leaveDate) ? '1 day (compensation)' : '';
     } else if (formData.leaveType === 'Leave' || formData.leaveType === 'On Duty') {
+      if (formData.leaveSubType === 'Half Day') {
+        return '0.5 days';
+      }
       if (!formData.fromDate) return '';
 
       if (formData.toDate) {
@@ -266,8 +284,8 @@ export default function SubmitLeaveScreen() {
       return false;
     }
 
-    if (user.role !== 'Staff') {
-      Alert.alert('Error', 'Only staff members can submit requests');
+    if (user.role !== 'Staff' && user.role !== 'SubAdmin') {
+      Alert.alert('Error', 'Only staff and sub-admin can submit requests');
       return false;
     }
 
@@ -333,6 +351,42 @@ export default function SubmitLeaveScreen() {
     }
 
     if (formData.leaveType === 'Leave' || formData.leaveType === 'On Duty') {
+      if (formData.leaveSubType === 'Half Day') {
+        if (!formData.halfDaySession) {
+          Alert.alert('Error', 'Please select a session (Morning or Afternoon)');
+          return false;
+        }
+        if (!formData.fromTime || !formData.toTime) {
+          Alert.alert('Error', 'Please select from time and to time');
+          return false;
+        }
+
+        const [fromHour, fromMinute] = formData.fromTime.split(':').map(Number);
+        const [toHour, toMinute] = formData.toTime.split(':').map(Number);
+        const fromMinutes = fromHour * 60 + fromMinute;
+        const toMinutes = toHour * 60 + toMinute;
+
+        const { startHour: wsH, endHour: weH } = getCampusWorkHours(user?.campus);
+        const workStartMins = wsH * 60;
+        const workEndMins   = weH * 60;
+        const startLabel = wsH < 12 ? `${wsH}:00 AM` : `${wsH - 12}:00 PM`;
+        const endLabel   = weH < 12 ? `${weH}:00 AM` : `${weH - 12}:00 PM`;
+
+        if (fromMinutes < workStartMins || fromMinutes > workEndMins) {
+          Alert.alert('Error', `From time must be between ${startLabel} and ${endLabel}`);
+          return false;
+        }
+
+        if (toMinutes < workStartMins || toMinutes > workEndMins) {
+          Alert.alert('Error', `To time must be between ${startLabel} and ${endLabel}`);
+          return false;
+        }
+
+        if (toMinutes <= fromMinutes) {
+          Alert.alert('Error', 'To time must be after From time');
+          return false;
+        }
+      }
       if (formData.toDate && formData.fromDate && formData.fromDate > formData.toDate) {
         setFormData(prev => ({ ...prev, toDate: prev.fromDate }));
         Alert.alert('Error', 'To date cannot be before From date. Adjusted to match From date.');
@@ -356,13 +410,19 @@ export default function SubmitLeaveScreen() {
       const toMinutes = toHour * 60 + toMinute;
       const diffMinutes = toMinutes - fromMinutes;
 
-      if (fromMinutes < 8 * 60 || fromMinutes > 16 * 60) {
-        Alert.alert('Error', 'From time must be between 8:00 AM and 4:00 PM');
+      const { startHour: wsH, endHour: weH } = getCampusWorkHours(user.campus);
+      const workStartMins = wsH * 60;
+      const workEndMins   = weH * 60;
+      const startLabel = wsH < 12 ? `${wsH}:00 AM` : `${wsH - 12}:00 PM`;
+      const endLabel   = weH < 12 ? `${weH}:00 AM` : `${weH - 12}:00 PM`;
+
+      if (fromMinutes < workStartMins || fromMinutes > workEndMins) {
+        Alert.alert('Error', `From time must be between ${startLabel} and ${endLabel}`);
         return false;
       }
 
-      if (toMinutes < 8 * 60 || toMinutes > 16 * 60) {
-        Alert.alert('Error', 'To time must be between 8:00 AM and 4:00 PM');
+      if (toMinutes < workStartMins || toMinutes > workEndMins) {
+        Alert.alert('Error', `To time must be between ${startLabel} and ${endLabel}`);
         return false;
       }
 
@@ -478,6 +538,11 @@ export default function SubmitLeaveScreen() {
         requestData.fromDate = formData.fromDate!;
         requestData.toDate = formData.toDate || formData.fromDate;
         requestData.leaveSubType = formData.leaveSubType;
+        if (formData.leaveSubType === 'Half Day') {
+          requestData.fromTime = formData.fromTime;
+          requestData.toTime = formData.toTime;
+          requestData.halfDaySession = formData.halfDaySession;
+        }
       } else if (formData.leaveType === 'Permission') {
         requestData.fromDate = formData.fromDate!;
         requestData.toDate = formData.fromDate;
@@ -513,6 +578,7 @@ export default function SubmitLeaveScreen() {
         leaveDate: null,
         fromTime: '',
         toTime: '',
+        halfDaySession: '',
         reason: '',
         calculatedDuration: '',
       });
@@ -622,6 +688,7 @@ export default function SubmitLeaveScreen() {
                     toTime: '',
                     calculatedDuration: '',
                     leaveSubType: value === 'Leave' ? 'Casual' : '',
+                    halfDaySession: '',
                   }))}
                   containerStyle={styles.input}
                 />
@@ -631,9 +698,106 @@ export default function SubmitLeaveScreen() {
                     label="Leave Type"
                     options={leaveSubTypes}
                     value={formData.leaveSubType}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, leaveSubType: value }))}
+                    onValueChange={(value) => setFormData(prev => ({
+                      ...prev,
+                      leaveSubType: value,
+                      halfDaySession: '',
+                      fromTime: '',
+                      toTime: '',
+                    }))}
                     containerStyle={styles.input}
                   />
+                )}
+
+                {/* Half Day: session selector + editable time pickers */}
+                {formData.leaveType === 'Leave' && formData.leaveSubType === 'Half Day' && (
+                  <>
+                    <View style={styles.input}>
+                      <Text style={styles.label}>Session</Text>
+                      <View style={styles.halfDaySessionRow}>
+                        {(['Morning', 'Afternoon'] as const).map(session => {
+                          const isActive = formData.halfDaySession === session;
+                          return (
+                            <TouchableOpacity
+                              key={session}
+                              style={[styles.halfDayBtn, isActive && styles.halfDayBtnActive]}
+                              onPress={() => {
+                                const { startHour, endHour } = getCampusWorkHours(user?.campus);
+                                const from = session === 'Morning'
+                                  ? `${String(startHour).padStart(2, '0')}:00`
+                                  : '12:00';
+                                const to = session === 'Morning'
+                                  ? '12:00'
+                                  : `${String(endHour).padStart(2, '0')}:00`;
+                                setFormData(prev => ({ ...prev, halfDaySession: session, fromTime: from, toTime: to }));
+                              }}
+                            >
+                              <Text style={[styles.halfDayBtnText, isActive && styles.halfDayBtnTextActive]}>
+                                {session}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+
+                    {formData.halfDaySession !== '' && (
+                      <>
+                        <TimePicker
+                          label="From Time"
+                          value={formData.fromTime}
+                          onValueChange={(time) => {
+                            const [h, m] = time.split(':').map(Number);
+                            const timeInMinutes = h * 60 + m;
+                            const { startHour, endHour } = getCampusWorkHours(user?.campus);
+                            const workStartMinutes = startHour * 60;
+                            const workEndMinutes   = endHour * 60;
+                            const startLabel = startHour < 12 ? `${startHour}:00 AM` : `${startHour - 12}:00 PM`;
+                            const endLabel   = endHour   < 12 ? `${endHour}:00 AM`   : `${endHour - 12}:00 PM`;
+
+                            if (timeInMinutes < workStartMinutes || timeInMinutes > workEndMinutes) {
+                              Alert.alert(
+                                'Invalid Time',
+                                `Please select a time between ${startLabel} and ${endLabel} (working hours only).`,
+                                [{ text: 'OK' }]
+                              );
+                              return;
+                            }
+                            setFormData(prev => ({ ...prev, fromTime: time }));
+                          }}
+                          minHour={getCampusWorkHours(user?.campus).startHour}
+                          maxHour={getCampusWorkHours(user?.campus).endHour}
+                          containerStyle={styles.input}
+                        />
+                        <TimePicker
+                          label="To Time"
+                          value={formData.toTime}
+                          onValueChange={(time) => {
+                            const [h, m] = time.split(':').map(Number);
+                            const timeInMinutes = h * 60 + m;
+                            const { startHour, endHour } = getCampusWorkHours(user?.campus);
+                            const workStartMinutes = startHour * 60;
+                            const workEndMinutes   = endHour * 60;
+                            const startLabel = startHour < 12 ? `${startHour}:00 AM` : `${startHour - 12}:00 PM`;
+                            const endLabel   = endHour   < 12 ? `${endHour}:00 AM`   : `${endHour - 12}:00 PM`;
+
+                            if (timeInMinutes < workStartMinutes || timeInMinutes > workEndMinutes) {
+                              Alert.alert(
+                                'Invalid Time',
+                                `Please select a time between ${startLabel} and ${endLabel} (working hours only).`,
+                                [{ text: 'OK' }]
+                              );
+                              return;
+                            }
+                            setFormData(prev => ({ ...prev, toTime: time }));
+                          }}
+                          minHour={getCampusWorkHours(user?.campus).startHour}
+                          maxHour={getCampusWorkHours(user?.campus).endHour}
+                          containerStyle={styles.input}
+                        />
+                      </>
+                    )}
+                  </>
                 )}
 
                 {formData.leaveType === 'Compensation' ? (
@@ -648,6 +812,7 @@ export default function SubmitLeaveScreen() {
                       showHolidayWarning={false}
                       isCompensationLeave={true}
                       maximumDate={new Date()}
+                      campus={user.campus}
                     />
                     <DatePicker
                       label="Compensation on"
@@ -671,6 +836,7 @@ export default function SubmitLeaveScreen() {
                       showHolidayWarning={true}
                       isCompensationLeave={false}
                       minimumDate={new Date()}
+                      campus={user.campus}
                     />
                   </>
                 ) : (
@@ -700,10 +866,11 @@ export default function SubmitLeaveScreen() {
                     allowHolidays={false}
                     showHolidayWarning={true}
                     minimumDate={new Date()}
+                    campus={user.campus}
                   />
                 )}
 
-                {(formData.leaveType === 'Leave' || formData.leaveType === 'On Duty') && (
+                {(formData.leaveType === 'Leave' || formData.leaveType === 'On Duty') && formData.leaveSubType !== 'Half Day' && (
                   <DatePicker
                     label="To Date"
                     value={formData.toDate}
@@ -734,6 +901,7 @@ export default function SubmitLeaveScreen() {
                     allowHolidays={false}
                     showHolidayWarning={true}
                     minimumDate={formData.fromDate || new Date()}
+                    campus={user.campus}
                   />
                 )}
 
@@ -745,41 +913,57 @@ export default function SubmitLeaveScreen() {
                       onValueChange={(time) => {
                         const [h, m] = time.split(':').map(Number);
                         const timeInMinutes = h * 60 + m;
-                        const workStartMinutes = 8 * 60;
-                        const workEndMinutes = 16 * 60;
+                        const { startHour, endHour } = getCampusWorkHours(user?.campus);
+                        const workStartMinutes = startHour * 60;
+                        const workEndMinutes   = endHour * 60;
+                        const startLabel = startHour < 12 ? `${startHour}:00 AM` : `${startHour - 12}:00 PM`;
+                        const endLabel   = endHour   < 12 ? `${endHour}:00 AM`   : `${endHour - 12}:00 PM`;
 
+                        // Boundary: must be within campus working hours
                         if (timeInMinutes < workStartMinutes || timeInMinutes >= workEndMinutes) {
                           Alert.alert(
                             'Invalid Time',
-                            'Please select a time between 8:00 AM and 4:00 PM (working hours only).',
+                            `Please select a time between ${startLabel} and ${endLabel} (working hours only).`,
                             [{ text: 'OK' }]
                           );
                           return;
                         }
 
-                        if (!((h >= 8 && h <= 11) || (h >= 12 && h <= 15))) {
+                        // Slot check: morning = [startHour, noon), afternoon = [noon, endHour-1]
+                        const morningStart   = startHour;
+                        const morningEnd     = 11;          // morning slot ends at 11 (h <= 11)
+                        const afternoonStart = 12;
+                        const afternoonEnd   = endHour - 1; // e.g. 15 for RMP (end=16), 16 for TRP (end=17)
+
+                        const inMorning   = h >= morningStart   && h <= morningEnd;
+                        const inAfternoon = h >= afternoonStart && h <= afternoonEnd;
+
+                        if (!(inMorning || inAfternoon)) {
                           Alert.alert(
                             'Invalid Permission Time',
-                            'Permission can only be requested during:\n• Morning: 8:00 AM - 11:00 AM\n• Afternoon: 12:00 PM - 3:00 PM',
+                            `Permission can only be requested during:\n• Morning: ${startLabel} - 11:00 AM\n• Afternoon: 12:00 PM - ${endHour - 1}:00 PM`,
                             [{ text: 'OK' }]
                           );
                           return;
                         }
 
-                        let toHour = h + 1;
+                        // Auto-calculate To Time (from + 1 h), capped at slot boundary
+                        let toHour   = h + 1;
                         let toMinute = m;
-                        if (h >= 8 && h <= 11) {
+                        if (inMorning) {
+                          // Cap at noon
                           if (toHour > 12 || (toHour === 12 && toMinute > 0)) {
-                            toHour = 12;
+                            toHour   = 12;
                             toMinute = 0;
                           }
-                        } else if (h >= 12 && h <= 15) {
-                          if (toHour > 16 || (toHour === 16 && toMinute > 0)) {
-                            toHour = 16;
+                        } else if (inAfternoon) {
+                          // Cap at work-end hour
+                          if (toHour > endHour || (toHour === endHour && toMinute > 0)) {
+                            toHour   = endHour;
                             toMinute = 0;
                           }
                         }
-                        const toTime = `${toHour.toString().padStart(2, '0')}:${toMinute.toString().padStart(2, '0')}`;
+                        const toTime = `${toHour.toString().padStart(2, '0')}:${toMinute.toString().padStart(2, '00')}`;
                         setFormData(prev => ({
                           ...prev,
                           fromTime: time,
@@ -1212,5 +1396,30 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontStyle: 'italic',
     textAlign: 'center',
+  },
+  halfDaySessionRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  halfDayBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  halfDayBtnActive: {
+    backgroundColor: '#EC4899',
+    borderColor: '#EC4899',
+  },
+  halfDayBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  halfDayBtnTextActive: {
+    color: '#FFFFFF',
   },
 });

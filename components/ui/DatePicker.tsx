@@ -17,6 +17,8 @@ interface DatePickerProps {
   allowHolidays?: boolean;
   showHolidayWarning?: boolean;
   isCompensationLeave?: boolean;
+  /** User's campus (e.g. 'TRP' | 'RMP'). Required for campus-specific holiday blocking. */
+  campus?: string;
 }
 
 export const DatePicker: React.FC<DatePickerProps> = ({
@@ -32,6 +34,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   allowHolidays = true,
   showHolidayWarning = true,
   isCompensationLeave = false,
+  campus,
 }) => {
   const [show, setShow] = useState(false);
 
@@ -52,7 +55,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
 
     // Check if it's a Saturday and if it's a working Saturday
     const isSat = isSaturday(selectedDate);
-    const { isHoliday: isHolidayDay, holiday, isSaturdayWorking } = await isHoliday(selectedDate);
+    const { isHoliday: isHolidayDay, holiday, isSaturdayWorking } = await isHoliday(selectedDate, campus);
 
     // Special handling for compensation leave
     if (isCompensationLeave) {
@@ -83,7 +86,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
     }
 
     // Normal date picker logic for other leave types
-    const { isBlocked, reason, holiday: blockedHoliday } = await isDateBlocked(selectedDate);
+    const { isBlocked, reason, holiday: blockedHoliday } = await isDateBlocked(selectedDate, campus);
 
     // If it's a working Saturday, show info but allow selection
     if (isSat && isSaturdayWorking) {
@@ -199,7 +202,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
 
       {/* Show working Saturday indicator */}
       {!isCompensationLeave && value && isSaturday(value) && (
-        <WorkingSaturdayIndicator date={value} />
+        <WorkingSaturdayIndicator date={value} campus={campus} />
       )}
 
       {show && (
@@ -217,16 +220,16 @@ export const DatePicker: React.FC<DatePickerProps> = ({
 };
 
 // New component to show working Saturday status
-const WorkingSaturdayIndicator: React.FC<{ date: Date }> = ({ date }) => {
+const WorkingSaturdayIndicator: React.FC<{ date: Date; campus?: string }> = ({ date, campus }) => {
   const [isWorking, setIsWorking] = React.useState<boolean | null>(null);
 
   React.useEffect(() => {
     const checkStatus = async () => {
-      const { isSaturdayWorking } = await isHoliday(date);
+      const { isSaturdayWorking } = await isHoliday(date, campus);
       setIsWorking(isSaturdayWorking || false);
     };
     checkStatus();
-  }, [date]);
+  }, [date, campus]);
 
   if (isWorking === null) return null;
 

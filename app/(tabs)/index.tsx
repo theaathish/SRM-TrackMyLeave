@@ -730,10 +730,11 @@ export default function HomeScreen() {
                 <Text style={styles.directorSubtitle}>Welcome, {user?.name} • {user?.department}</Text>
                 <TouchableOpacity
                   style={styles.myRequestsButton}
-                  onPress={() => router.push(`/staff/${user.id}`)}
+                  onPress={() => user?.id && router.push(`/staff/${user.id}`)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.myRequestsButtonText}>View My Requests</Text>
+                  <Calendar size={16} color="#3B82F6" style={{ marginRight: 6 }} />
+                  <Text style={styles.myRequestsButtonText}>View My Leave Calendar</Text>
                   <ChevronRight size={16} color="#3B82F6" />
                 </TouchableOpacity>
               </View>
@@ -937,7 +938,16 @@ export default function HomeScreen() {
         <View ref={containerRef} style={styles.content}>
           <View style={styles.header}>
             <Text style={styles.welcomeText}>Welcome, {user?.name}</Text>
-            <Text style={styles.roleText}>{user?.department} {user?.role}</Text>
+            <Text style={styles.roleText}>{user?.department} • {user?.role === 'Staff' ? 'Faculty' : user?.role}</Text>
+            <TouchableOpacity
+              style={styles.myRequestsButton}
+              onPress={() => user?.id && router.push(`/staff/${user.id}`)}
+              activeOpacity={0.7}
+            >
+              <Calendar size={16} color="#3B82F6" style={{ marginRight: 6 }} />
+              <Text style={styles.myRequestsButtonText}>View My Leave Calendar</Text>
+              <ChevronRight size={16} color="#3B82F6" />
+            </TouchableOpacity>
           </View>
 
           <View style={styles.statsContainer}>

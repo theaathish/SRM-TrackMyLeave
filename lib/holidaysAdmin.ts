@@ -9,8 +9,11 @@ import { Holiday } from './holidays';
 export const createHoliday = async (holiday: Omit<Holiday, 'id'> & { id?: string; campus?: string }): Promise<string> => {
   try {
     const id = holiday.id || `${holiday.year}-${holiday.name.replace(/\s+/g, '-').toLowerCase()}`;
+    // Normalize to local midnight so hasHolidaysInRange date comparisons are unambiguous
+    const normalizedDate = new Date(holiday.date);
+    normalizedDate.setHours(0, 0, 0, 0);
     await setDoc(doc(db, 'holidays', id), {
-      date: holiday.date,
+      date: normalizedDate,
       name: holiday.name,
       type: holiday.type,
       isRecurring: holiday.isRecurring,

@@ -118,21 +118,17 @@ export default function StaffScreen() {
       setUser(currentUser);
 
       // Load all requests and filter for CURRENT YEAR only
-      const allRequestsRaw = await getLeaveRequests();
+      const allRequestsRaw = await getLeaveRequests(undefined, currentUser.campus ?? undefined);
       const currentYear = new Date().getFullYear();
       
       const allRequests = allRequestsRaw.filter(req => {
         const reqDate = req.fromDate instanceof Date ? req.fromDate : new Date(req.fromDate);
-        if (reqDate.getFullYear() !== currentYear) return false;
-
-        if (!currentUser.campus) return true;
-        // Include if campus matches OR if request has no campus (legacy)
-        return !req.campus || req.campus === currentUser.campus;
+        return reqDate.getFullYear() === currentYear;
       });
 
-      // Get all staff users
+      // Get all staff and subadmin users
       const usersSnapshot = await getDocs(
-        query(collection(db, 'users'), where('role', '==', 'Staff'))
+        query(collection(db, 'users'), where('role', 'in', ['Staff', 'SubAdmin']))
       );
 
       const stats = usersSnapshot.docs

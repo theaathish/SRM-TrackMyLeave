@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { Picker } from '@/components/ui/Picker';
 import { getCurrentUser, signOut, updateUserProfile, updateUserEmployeeId } from '@/lib/auth';
 import type { User as AppUser } from '@/lib/auth';
-import { User as UserIcon, Mail, Building, Shield, LogOut, Edit, Save, X } from 'lucide-react-native';
+import { User as UserIcon, Mail, Building, Shield, LogOut, Edit, Save, X, Calendar as CalendarIcon, ChevronRight } from 'lucide-react-native';
 import * as SecureStore from 'expo-secure-store';
 import { MaterialIcons } from '@expo/vector-icons';
 import {
@@ -492,6 +492,26 @@ export default function ProfileScreen() {
             </CardContent>
           </Card>
 
+          {/* My Leave Calendar */}
+          {user?.id && (
+            <TouchableOpacity
+              style={styles.calendarNavCard}
+              onPress={() => router.push(`/staff/${user.id}`)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.calendarNavLeft}>
+                <View style={styles.calendarNavIconWrap}>
+                  <CalendarIcon size={22} color="#3B82F6" />
+                </View>
+                <View>
+                  <Text style={styles.calendarNavTitle}>My Leave Calendar</Text>
+                  <Text style={styles.calendarNavSubtitle}>View leave color codes, dates & stats</Text>
+                </View>
+              </View>
+              <ChevronRight size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
+
           <Card style={styles.infoCard}>
             <CardHeader>
               <Text style={styles.cardTitle}>Security & Authentication</Text>
@@ -786,5 +806,44 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     marginTop: 6,
     fontStyle: 'italic',
+  },
+  calendarNavCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  calendarNavLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  calendarNavIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  calendarNavTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  calendarNavSubtitle: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 2,
   },
 });

@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { getLeaveRequests, LeaveRequest, parseDurationToDays } from '@/lib/firestore';
+import { getLeaveRequests, LeaveRequest, parseDurationToDays, getWorkingSaturdays } from '@/lib/firestore';
 import { collection, getDoc, doc } from 'firebase/firestore';
 import { getCurrentUser, updateUserProfile } from '@/lib/auth';
 import { db } from '@/lib/firebase';
@@ -20,6 +20,7 @@ const leaveColors = {
   'Permission': '#8B5CF6', // Purple
   'On Duty': '#06B6D4', // Cyan
   'Compensation': '#6366F1', // Indigo
+  'Half Day': '#EC4899', // Pink
 };
 
 // Loading component
@@ -35,7 +36,7 @@ function LoadingScreen() {
 }
 
 // Calendar component using react-native-calendars
-function CalendarView({ requests, onDatePress }: { requests: LeaveRequest[], onDatePress: (date: string, dayRequests: LeaveRequest[]) => void }) {
+function CalendarView({ requests, onDatePress, workingSaturdays }: { requests: LeaveRequest[], onDatePress: (date: string, dayRequests: LeaveRequest[]) => void, workingSaturdays: string[] }) {
   
   // Create marked dates object for the calendar
   const markedDates = useMemo(() => {
@@ -53,7 +54,7 @@ function CalendarView({ requests, onDatePress }: { requests: LeaveRequest[], onD
         // Add all dates in the range
         const currentDate = new Date(fromDate);
         while (currentDate <= toDate) {
-          const dateKey = currentDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+          const dateKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
           
           // Always use circle styling, no dots or numbers
           marked[dateKey] = {
@@ -66,9 +67,34 @@ function CalendarView({ requests, onDatePress }: { requests: LeaveRequest[], onD
         }
       }
     });
+
+    // Feature 3: dark purple for any working-Saturday override that falls within an approved leave span
+    const SANDWICH_COLOR = '#5B21B6'; // Violet-800 dark purple
+    workingSaturdays.forEach((satStr) => {
+      const [sy, sm, sd] = satStr.split('-').map(Number);
+      const satDate = new Date(sy, sm - 1, sd);
+      satDate.setHours(0, 0, 0, 0);
+
+      const isInLeaveSpan = requests.some((req) => {
+        if (req.status !== 'Approved') return false;
+        const from = new Date(req.fromDate);
+        from.setHours(0, 0, 0, 0);
+        const to = req.toDate ? new Date(req.toDate) : new Date(req.fromDate);
+        to.setHours(0, 0, 0, 0);
+        return satDate >= from && satDate <= to;
+      });
+
+      if (isInLeaveSpan) {
+        marked[satStr] = {
+          selected: true,
+          selectedColor: SANDWICH_COLOR,
+          selectedTextColor: '#FFFFFF',
+        };
+      }
+    });
     
     return marked;
-  }, [requests]);
+  }, [requests, workingSaturdays]);
 
   // Create a map of dates to leave requests for onDayPress
   const dateRequestMap = useMemo(() => {
@@ -81,7 +107,7 @@ function CalendarView({ requests, onDatePress }: { requests: LeaveRequest[], onD
         
         const currentDate = new Date(fromDate);
         while (currentDate <= toDate) {
-          const dateKey = currentDate.toISOString().split('T')[0];
+          const dateKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
           if (!map[dateKey]) map[dateKey] = [];
           map[dateKey].push(request);
           currentDate.setDate(currentDate.getDate() + 1);
@@ -163,6 +189,11 @@ function LeaveLegend() {
               <Text style={styles.legendText}>{type}</Text>
             </View>
           ))}
+          {/* Feature 3: sandwich-Saturday overlay */}
+          <View style={styles.legendItem}>
+            <View style={[styles.legendColor, { backgroundColor: '#5B21B6' }]} />
+            <Text style={styles.legendText}>Working Sat (in leave span)</Text>
+          </View>
         </View>
       </CardContent>
     </Card>
@@ -290,6 +321,7 @@ function StaffDetailScreen() {
   const [selectedRequests, setSelectedRequests] = useState<LeaveRequest[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
+  const [workingSaturdays, setWorkingSaturdays] = useState<string[]>([]);
 
   useEffect(() => {
     loadStaffAndRequests();
@@ -309,6 +341,15 @@ function StaffDetailScreen() {
   const loadStaffAndRequests = async () => {
     setLoading(true);
     try {
+      // Check viewer permissions: staff can only view their own calendar
+      const currentUser = await getCurrentUser();
+      setViewer(currentUser);
+      if (currentUser?.role === 'Staff' && currentUser.id !== id) {
+        Alert.alert('Access Denied', 'You can only view your own leave calendar.');
+        router.back();
+        return;
+      }
+
       // Get staff user info
       const userDoc = await getDoc(doc(db, 'users', id as string));
       setStaff(userDoc.exists() ? { ...userDoc.data(), id: userDoc.id } : null);
@@ -322,9 +363,15 @@ function StaffDetailScreen() {
       });
       
       setRequests(filteredReqs);
+
+      // Feature 3: load working-Saturday overrides for this staff member's campus
+      const campus = userDoc.exists() ? (userDoc.data().campus as string | undefined) : undefined;
+      const saturdays = await getWorkingSaturdays(campus);
+      setWorkingSaturdays(saturdays);
     } catch (error) {
       setStaff(null);
       setRequests([]);
+      setWorkingSaturdays([]);
     } finally {
       setLoading(false);
     }
@@ -407,7 +454,7 @@ function StaffDetailScreen() {
 
         <Card style={styles.infoCard}>
           <CardHeader>
-            <Text style={styles.staffName}>{staff.name}</Text>
+            <Text style={styles.staffName}>{staff.name}{viewer?.id === staff.id ? ' (My Calendar)' : ''}</Text>
             <Text style={styles.staffDetails}>{staff.department} • ID: {staff.employeeId}</Text>
           </CardHeader>
           {viewer?.role === 'Director' && (
@@ -434,7 +481,7 @@ function StaffDetailScreen() {
         </Card>
 
         {/* Calendar Section - Using react-native-calendars */}
-        <CalendarView requests={requests} onDatePress={handleDatePress} />
+        <CalendarView requests={requests} onDatePress={handleDatePress} workingSaturdays={workingSaturdays} />
         
         {/* Legend */}
         <LeaveLegend />

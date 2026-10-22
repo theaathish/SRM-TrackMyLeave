@@ -2,7 +2,7 @@
   "expo": {
     "name": "TrackMyLeave",
     "slug": "trackmyleave",
-    "version": "1.1.1",
+    "version": "1.1.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -58,20 +58,20 @@
         "android.permission.VIBRATE"
       ],
       "package": "com.srmrearch.leavemanager",
-      "versionCode": 21
+      "versionCode": 25
     },
     "updates": {
       "url": "https://u.expo.dev/af4bec31-9cb2-4ead-a81e-3e706ed14794"
     },
-    "runtimeVersion": "1.1.1",
+    "runtimeVersion": "1.1.2",
     "extra": {
       "firebase": {
-        "apiKey": "AIzaSyCHKewsoykpqi6CtfJk4PTaI5ZGZneJuUM",
-        "authDomain": "leavemanagersrm.firebaseapp.com",
-        "projectId": "leavemanagersrm",
-        "storageBucket": "leavemanagersrm.firebasestorage.app",
-        "messagingSenderId": "7588322507",
-        "appId": "1:7588322507:web:ca2157cd7f87f18cf44f4e"
+        "apiKey": "AIzaSyDJFaLfWxQB8Spa2N-48wFknWxBt2--540",
+        "authDomain": "trackmyleavedummyprojfire.firebaseapp.com",
+        "projectId": "trackmyleavedummyprojfire",
+        "storageBucket": "trackmyleavedummyprojfire.firebasestorage.app",
+        "messagingSenderId": "582430977410",
+        "appId": "1:582430977410:web:5f6c3705ca0090d943b39b"
       },
       "eas": {
         "projectId": "8216c888-71af-47a6-a26c-aea908db01ee"

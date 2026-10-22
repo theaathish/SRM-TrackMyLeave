@@ -56,3 +56,6 @@ ios/Pods/
 ios/build/
 ios/DerivedData/
 leavemanagersrm-firebase-adminsdk-fbsvc-bbcac414e7.json
+*.keystore
+.env
+android/app/google-services.json
